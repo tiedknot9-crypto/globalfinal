@@ -411,6 +411,46 @@ export default function OPD() {
       return;
     }
     
+    if (isReceptionist) {
+      if (prescription.vitals && (
+        prescription.vitals.bp ||
+        prescription.vitals.pulse ||
+        prescription.vitals.temp ||
+        prescription.vitals.spo2 ||
+        prescription.vitals.weight ||
+        prescription.vitals.rr
+      )) {
+        try {
+          const vData = {
+            patient_id: selectedPatient.id,
+            bp: prescription.vitals.bp || null,
+            pulse: prescription.vitals.pulse ? Number(prescription.vitals.pulse) : null,
+            temp: prescription.vitals.temp ? String(prescription.vitals.temp) : null,
+            spo2: prescription.vitals.spo2 ? Number(prescription.vitals.spo2) : null,
+            weight: prescription.vitals.weight ? Number(prescription.vitals.weight) : null,
+            rr: prescription.vitals.rr ? Number(prescription.vitals.rr) : null,
+            recorded_by: currentUser?.id || null,
+            recorded_at: new Date().toISOString()
+          };
+          const savedV = await supabaseService.updateVitals(vData);
+          if (savedV) {
+            setSelectedPatientVitals(prev => [savedV, ...prev]);
+            window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'patient_vitals', action: 'insert' } }));
+            toast.success(`Patient vitals updated successfully for ${selectedPatient.name}`);
+            setIsPrescriptionOpen(false);
+          } else {
+            toast.error('Failed to save vitals');
+          }
+        } catch (err) {
+          console.error('Failed to save vitals:', err);
+          toast.error('Failed to save vitals due to an error');
+        }
+      } else {
+        toast.error('Please enter at least one vital detail to save.');
+      }
+      return;
+    }
+    
     const newPrescriptionData = {
       patient_id: selectedPatient.id,
       doctor_name: prescription.doctor,
@@ -3010,7 +3050,7 @@ export default function OPD() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5 text-emerald-600" />
-              Write Prescription - {selectedPatient?.name}
+              {isReceptionist ? 'Enter Vitals / View Prescription' : 'Write Prescription'} - {selectedPatient?.name}
             </DialogTitle>
           </DialogHeader>
           
@@ -3020,7 +3060,7 @@ export default function OPD() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Doctor</Label>
-                  <Select value={prescription.doctor} onValueChange={(v) => setPrescription({...prescription, doctor: v})}>
+                  <Select disabled={isReceptionist} value={prescription.doctor} onValueChange={(v) => setPrescription({...prescription, doctor: v})}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select Doctor" />
                     </SelectTrigger>
@@ -3033,17 +3073,19 @@ export default function OPD() {
                 </div>
                 <div className="space-y-2">
                   <Label>Date</Label>
-                  <Input type="date" value={prescription.date} onChange={(e) => setPrescription({...prescription, date: e.target.value})} />
+                  <Input disabled={isReceptionist} type="date" value={prescription.date} onChange={(e) => setPrescription({...prescription, date: e.target.value})} />
                 </div>
               </div>
 
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label className="text-base font-bold">Medicines</Label>
-                  <Button variant="outline" size="sm" onClick={addMedicine} className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
-                    <Plus className="w-4 h-4" />
-                    Add Medicine
-                  </Button>
+                  {!isReceptionist && (
+                    <Button variant="outline" size="sm" onClick={addMedicine} className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50">
+                      <Plus className="w-4 h-4" />
+                      Add Medicine
+                    </Button>
+                  )}
                 </div>
                 
                 <div className="space-y-3">
@@ -3052,6 +3094,7 @@ export default function OPD() {
                       <div className="col-span-4 space-y-1.5">
                         <Label className="text-[10px] uppercase text-slate-500">Medicine Name</Label>
                         <Input 
+                          disabled={isReceptionist}
                           placeholder="e.g. Paracetamol" 
                           value={med.name} 
                           onChange={(e) => updateMedicine(idx, 'name', e.target.value)}
@@ -3061,6 +3104,7 @@ export default function OPD() {
                       <div className="col-span-2 space-y-1.5">
                         <Label className="text-[10px] uppercase text-slate-500">Dosage</Label>
                         <Input 
+                          disabled={isReceptionist}
                           placeholder="500mg" 
                           value={med.dosage} 
                           onChange={(e) => updateMedicine(idx, 'dosage', e.target.value)}
@@ -3070,6 +3114,7 @@ export default function OPD() {
                       <div className="col-span-3 space-y-1.5">
                         <Label className="text-[10px] uppercase text-slate-500">Frequency</Label>
                         <Input 
+                          disabled={isReceptionist}
                           placeholder="1-0-1" 
                           value={med.frequency} 
                           onChange={(e) => updateMedicine(idx, 'frequency', e.target.value)}
@@ -3079,6 +3124,7 @@ export default function OPD() {
                       <div className="col-span-2 space-y-1.5">
                         <Label className="text-[10px] uppercase text-slate-500">Duration</Label>
                         <Input 
+                          disabled={isReceptionist}
                           placeholder="5 days" 
                           value={med.duration} 
                           onChange={(e) => updateMedicine(idx, 'duration', e.target.value)}
@@ -3086,7 +3132,7 @@ export default function OPD() {
                         />
                       </div>
                       <div className="col-span-1">
-                        <Button variant="ghost" size="icon" className="h-9 w-9 text-rose-500" onClick={() => removeMedicine(idx)}>
+                        <Button disabled={isReceptionist} variant="ghost" size="icon" className="h-9 w-9 text-rose-500" onClick={() => removeMedicine(idx)}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -3098,6 +3144,7 @@ export default function OPD() {
               <div className="space-y-2">
                 <Label>Advice / Notes</Label>
                 <Input 
+                  disabled={isReceptionist}
                   placeholder="Any specific instructions..." 
                   value={prescription.advice}
                   onChange={(e) => setPrescription({...prescription, advice: e.target.value})}
@@ -3192,6 +3239,7 @@ export default function OPD() {
                 <Label>Upload Written Prescription (PDF)</Label>
                 <div className="flex items-center gap-4">
                   <Input 
+                    disabled={isReceptionist}
                     type="file" 
                     accept=".pdf"
                     onChange={handleFileUpload}
@@ -3276,7 +3324,7 @@ export default function OPD() {
             </Button>
             <Button className="bg-emerald-600 hover:bg-emerald-700 gap-2" onClick={handleSavePrescription}>
               <CheckCircle2 className="w-4 h-4" />
-              Save Prescription
+              {isReceptionist ? 'Save Vitals Only' : 'Save Prescription'}
             </Button>
           </DialogFooter>
         </DialogContent>

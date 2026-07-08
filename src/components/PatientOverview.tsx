@@ -89,6 +89,7 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
 
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
   const isAccountant = normalizeRole(currentUser?.role || userRole) === 'ACCOUNTANT';
+  const isReceptionist = normalizeRole(currentUser?.role || userRole) === 'RECEPTIONIST';
   const isClinicalRole = ['ADMIN', 'DOCTOR', 'NURSE', 'SURGEON'].includes(normalizeRole(currentUser?.role || userRole));
   const isDoctor = currentUser && (
     currentUser.role?.toUpperCase() === 'DOCTOR' || 
@@ -158,7 +159,15 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
   const [newPrescription, setNewPrescription] = useState({
     medicines: [{ name: '', dosage: '', frequency: '' }],
     diagnosis: '',
-    advice: ''
+    advice: '',
+    vitals: {
+      bp: '',
+      pulse: '',
+      temp: '',
+      spo2: '',
+      weight: '',
+      rr: ''
+    }
   });
   const [uploadedFile, setUploadedFile] = useState<{name: string, url: string} | null>(null);
 
@@ -577,6 +586,54 @@ View full details at: ${shareUrl}
     if (!selectedPatient) return;
     
     setLoading(true);
+
+    if (isReceptionist) {
+      if (newPrescription.vitals && (
+        newPrescription.vitals.bp ||
+        newPrescription.vitals.pulse ||
+        newPrescription.vitals.temp ||
+        newPrescription.vitals.spo2 ||
+        newPrescription.vitals.weight ||
+        newPrescription.vitals.rr
+      )) {
+        try {
+          const vData = {
+            patient_id: selectedPatient.id,
+            bp: newPrescription.vitals.bp || null,
+            pulse: newPrescription.vitals.pulse ? Number(newPrescription.vitals.pulse) : null,
+            temp: newPrescription.vitals.temp ? String(newPrescription.vitals.temp) : null,
+            spo2: newPrescription.vitals.spo2 ? Number(newPrescription.vitals.spo2) : null,
+            weight: newPrescription.vitals.weight ? Number(newPrescription.vitals.weight) : null,
+            rr: newPrescription.vitals.rr ? Number(newPrescription.vitals.rr) : null,
+            recorded_by: currentUser?.id || null,
+            recorded_at: new Date().toISOString()
+          };
+          const savedV = await supabaseService.updateVitals(vData);
+          if (savedV) {
+            setVitals(prev => [savedV, ...prev]);
+            window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'patient_vitals', action: 'insert' } }));
+            toast.success(`Patient vitals updated successfully for ${selectedPatient.name}`);
+            setIsPrescriptionOpen(false);
+            setNewPrescription({
+              medicines: [{ name: '', dosage: '', frequency: '' }],
+              diagnosis: '',
+              advice: '',
+              vitals: { bp: '', pulse: '', temp: '', spo2: '', weight: '', rr: '' }
+            });
+          } else {
+            toast.error('Failed to save vitals');
+          }
+        } catch (err) {
+          console.error('Failed to save vitals:', err);
+          toast.error('Failed to save vitals due to an error');
+        }
+      } else {
+        toast.error('Please enter at least one vital detail to save.');
+      }
+      setLoading(false);
+      return;
+    }
+
     const newRx = {
       patient_id: selectedPatient.id,
       patientId: selectedPatient.id,
@@ -597,12 +654,51 @@ View full details at: ${shareUrl}
         doctorId: result.doctor_id || result.doctorId || newRx.doctor_id,
         date: result.prescription_date || result.date || result.created_at || newRx.prescription_date
       };
+
+      if (newPrescription.vitals && (
+        newPrescription.vitals.bp ||
+        newPrescription.vitals.pulse ||
+        newPrescription.vitals.temp ||
+        newPrescription.vitals.spo2 ||
+        newPrescription.vitals.weight ||
+        newPrescription.vitals.rr
+      )) {
+        try {
+          const vData = {
+            patient_id: selectedPatient.id,
+            bp: newPrescription.vitals.bp || null,
+            pulse: newPrescription.vitals.pulse ? Number(newPrescription.vitals.pulse) : null,
+            temp: newPrescription.vitals.temp ? String(newPrescription.vitals.temp) : null,
+            spo2: newPrescription.vitals.spo2 ? Number(newPrescription.vitals.spo2) : null,
+            weight: newPrescription.vitals.weight ? Number(newPrescription.vitals.weight) : null,
+            rr: newPrescription.vitals.rr ? Number(newPrescription.vitals.rr) : null,
+            recorded_by: currentUser?.id || null,
+            recorded_at: new Date().toISOString()
+          };
+          const savedV = await supabaseService.updateVitals(vData);
+          if (savedV) {
+            setVitals(prev => [savedV, ...prev]);
+            window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'patient_vitals', action: 'insert' } }));
+          }
+        } catch (err) {
+          console.error('Failed to auto-save vitals:', err);
+        }
+      }
+
       setPrescriptions([normalizedResult, ...prescriptions]);
       setIsPrescriptionOpen(false);
       setNewPrescription({
         medicines: [{ name: '', dosage: '', frequency: '' }],
         diagnosis: '',
-        advice: ''
+        advice: '',
+        vitals: {
+          bp: '',
+          pulse: '',
+          temp: '',
+          spo2: '',
+          weight: '',
+          rr: ''
+        }
       });
       toast.success('Prescription saved successfully');
     } else {
@@ -928,10 +1024,19 @@ View full details at: ${shareUrl}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {(isClinicalRole || normalizeRole(currentUser?.role || userRole) === 'RECEPTIONIST') && (
+          {(isClinicalRole || isReceptionist) && (
             <Button variant="outline" className="gap-2 border-medical-blue text-medical-blue hover:bg-blue-50" onClick={() => setIsPrescriptionOpen(true)}>
-              <Plus className="w-4 h-4" />
-              Write Prescription
+              {isReceptionist ? (
+                <>
+                  <FileText className="w-4 h-4" />
+                  Enter Vitals / View Prescription
+                </>
+              ) : (
+                <>
+                  <Plus className="w-4 h-4" />
+                  Write Prescription
+                </>
+              )}
             </Button>
           )}
           <Button variant="outline" className="gap-2 border-slate-300" onClick={() => setIsUploadOpen(true)}>
@@ -1750,14 +1855,15 @@ View full details at: ${shareUrl}
 
       {/* Prescription Dialog */}
       <Dialog open={isPrescriptionOpen} onOpenChange={setIsPrescriptionOpen}>
-        <DialogContent className="sm:max-w-[600px]">
+        <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto bg-white">
           <DialogHeader>
-            <DialogTitle>Write New Prescription</DialogTitle>
+            <DialogTitle>{isReceptionist ? 'Enter Vitals / View Prescription' : 'Write New Prescription'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Diagnosis</Label>
               <Input 
+                disabled={isReceptionist}
                 placeholder="Initial diagnosis..."
                 value={newPrescription.diagnosis}
                 onChange={e => setNewPrescription({...newPrescription, diagnosis: e.target.value})}
@@ -1767,23 +1873,26 @@ View full details at: ${shareUrl}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Medicines</Label>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-8 text-medical-blue h-8"
-                  onClick={() => setNewPrescription({
-                    ...newPrescription, 
-                    medicines: [...newPrescription.medicines, { name: '', dosage: '', frequency: '' }]
-                  })}
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Add Medicine
-                </Button>
+                {!isReceptionist && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 text-medical-blue h-8"
+                    onClick={() => setNewPrescription({
+                      ...newPrescription, 
+                      medicines: [...newPrescription.medicines, { name: '', dosage: '', frequency: '' }]
+                    })}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Medicine
+                  </Button>
+                )}
               </div>
               {newPrescription.medicines.map((med, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-6 space-y-1">
                     <Input 
+                      disabled={isReceptionist}
                       placeholder="Medicine name" 
                       value={med.name}
                       onChange={e => {
@@ -1795,6 +1904,7 @@ View full details at: ${shareUrl}
                   </div>
                   <div className="col-span-3 space-y-1">
                     <Input 
+                      disabled={isReceptionist}
                       placeholder="Dosage" 
                       value={med.dosage}
                       onChange={e => {
@@ -1806,6 +1916,7 @@ View full details at: ${shareUrl}
                   </div>
                   <div className="col-span-3 space-y-1">
                     <Input 
+                      disabled={isReceptionist}
                       placeholder="Freq" 
                       value={med.frequency}
                       onChange={e => {
@@ -1822,16 +1933,103 @@ View full details at: ${shareUrl}
             <div className="space-y-2">
               <Label>General Advice</Label>
               <textarea 
+                disabled={isReceptionist}
                 className="w-full min-h-[100px] p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm"
                 placeholder="Special instructions or advice..."
                 value={newPrescription.advice}
                 onChange={e => setNewPrescription({...newPrescription, advice: e.target.value})}
               />
             </div>
+
+            {/* Patient Vitals Entry Option */}
+            <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-200 space-y-3">
+              <div className="flex items-center gap-2 border-b border-slate-200 pb-1.5 mb-2">
+                <span className="font-bold text-xs uppercase text-slate-700 tracking-wider">Patient Vitals / Measurements</span>
+                <Badge variant="outline" className="text-[9px] text-emerald-600 bg-emerald-50 border-emerald-100 font-bold uppercase py-0 px-1.5 h-4">
+                  Vitals Option
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">BP (mmHg)</Label>
+                  <Input 
+                    placeholder="e.g. 120/80" 
+                    value={newPrescription.vitals?.bp || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), bp: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">Pulse (/min)</Label>
+                  <Input 
+                    placeholder="e.g. 72" 
+                    value={newPrescription.vitals?.pulse || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), pulse: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">Temp (°F)</Label>
+                  <Input 
+                    placeholder="e.g. 98.6" 
+                    value={newPrescription.vitals?.temp || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), temp: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">SpO2 (%)</Label>
+                  <Input 
+                    placeholder="e.g. 98" 
+                    value={newPrescription.vitals?.spo2 || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), spo2: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">Weight (kg)</Label>
+                  <Input 
+                    placeholder="e.g. 65" 
+                    value={newPrescription.vitals?.weight || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), weight: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-[10px] text-slate-500 uppercase font-semibold">Resp Rate (/min)</Label>
+                  <Input 
+                    placeholder="e.g. 18" 
+                    value={newPrescription.vitals?.rr || ''} 
+                    onChange={(e) => setNewPrescription({
+                      ...newPrescription,
+                      vitals: { ...(newPrescription.vitals || {}), rr: e.target.value }
+                    })}
+                    className="h-9 bg-white"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsPrescriptionOpen(false)}>Cancel</Button>
-            <Button className="bg-medical-blue" onClick={handleSavePrescription}>Save Prescription</Button>
+            <Button className="bg-medical-blue" onClick={handleSavePrescription}>
+              {isReceptionist ? 'Save Vitals Only' : 'Save Prescription'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
