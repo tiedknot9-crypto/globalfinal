@@ -923,7 +923,7 @@ View full details at: ${shareUrl}
             <Upload className="w-4 h-4" />
             Upload Old Record
           </Button>
-          {isClinicalRole && (
+          {(isClinicalRole || normalizeRole(currentUser?.role || userRole) === 'RECEPTIONIST') && (
             <Button variant="outline" className="gap-2" onClick={handlePrintBlankPrescription}>
               <FileText className="w-4 h-4" />
               Blank Prescription

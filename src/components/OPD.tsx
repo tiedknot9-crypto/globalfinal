@@ -1564,7 +1564,7 @@ export default function OPD() {
         </head>
         <body onload="window.print(); window.close();">
           <div class="header">
-            <div class="hospital-name">GREENHILL SUPER SPECIALTY HOSPITAL</div>
+            <div class="hospital-name">GLOBAL HOSPITAL & MATERNITY CENTER</div>
             <div style="font-size: 10px; font-weight: Bold; margin-top: 3px; color: #444;">OPD CLINIC APPOINTMENT SLIP</div>
           </div>
           <div>
@@ -1586,6 +1586,61 @@ export default function OPD() {
       </html>
     `;
     printWindow.document.write(tokenHtml);
+    printWindow.document.close();
+  };
+
+  const printLatestPrescriptionForPatient = (patient: any, doctorNameFallback?: string) => {
+    if (!patient) {
+      toast.error('Patient record not found');
+      return;
+    }
+
+    const patientPrescriptions = savedPrescriptions
+      .filter(rx => rx.patientId === patient.id || rx.patient_id === patient.id)
+      .sort((a, b) => new Date(b.date || b.prescription_date || 0).getTime() - new Date(a.date || a.prescription_date || 0).getTime());
+
+    if (patientPrescriptions.length === 0) {
+      toast.error(`No prescription history found for ${patient.name}`);
+      return;
+    }
+
+    const latestRx = patientPrescriptions[0];
+    const printWindow = window.open('', '_blank', 'width=800,height=1000');
+    if (!printWindow) {
+      toast.error('Please allow popups to print prescription');
+      return;
+    }
+
+    const docObj = users.find(u => u.name === (latestRx.doctor || latestRx.doctor_name || doctorNameFallback));
+    const latestVitals = selectedPatientVitals && selectedPatientVitals.length > 0 ? selectedPatientVitals[0] : undefined;
+
+    const html = getPrescriptionPrintHtml(
+      {
+        name: patient.name,
+        age: patient.age,
+        gender: patient.gender,
+        mrn: patient.mrn,
+        phone: patient.phone || patient.mobile || '',
+        fatherName: patient.fatherName || patient.father_name || ''
+      },
+      {
+        date: latestRx.date || latestRx.prescription_date,
+        medicines: latestRx.medicines || latestRx.medications || [],
+        advice: latestRx.advice || latestRx.notes || '',
+        vitals: latestRx.vitals || (latestVitals ? {
+          bp: latestVitals.bp,
+          pulse: latestVitals.pulse,
+          temp: latestVitals.temp,
+          spo2: latestVitals.spo2,
+          weight: latestVitals.weight,
+          rr: latestVitals.rr || latestVitals.respiration
+        } : undefined)
+      },
+      docObj,
+      hospitalInfo
+    );
+
+    printWindow.document.write(html);
     printWindow.document.close();
   };
 
@@ -2544,6 +2599,17 @@ export default function OPD() {
                             <History className="w-4 h-4" />
                             History
                           </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="text-emerald-600 h-8 gap-1.5 whitespace-nowrap" 
+                            onClick={() => {
+                              printLatestPrescriptionForPatient(patient);
+                            }}
+                          >
+                            <Printer className="w-4 h-4" />
+                            Print Rx
+                          </Button>
                           {!isAccountant && (
                             <Button 
                               variant="ghost" 
@@ -2798,6 +2864,29 @@ export default function OPD() {
                               }}
                             >
                               <History className="w-4 h-4" />
+                            </Button>
+                          )}
+                          {(currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'DOCTOR' || currentUser?.role === 'NURSE' || currentUser?.role === 'RECEPTIONIST' || currentUser?.role === 'RECEPTION' || currentUser?.role === 'FRONT_DESK' || currentUser?.role === 'ACCOUNTANT' || currentUser?.role === 'ACCOUNTS') && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" 
+                              title="Print Latest Prescription"
+                              onClick={() => {
+                                const patient = patients.find(p => p.id === apt.patientId) || 
+                                                patients.find(p => p.name === apt.patientName) ||
+                                                patients.find(p => p.mrn === apt.patientMrn) || {
+                                                  id: apt.patientId || `temp-${Math.random().toString(36).substring(2, 11)}`,
+                                                  name: apt.patientName || 'Unknown Patient',
+                                                  mrn: apt.patientMrn || 'N/A',
+                                                  age: apt.age || apt.patientAge || '30',
+                                                  gender: apt.gender || apt.patientGender || 'Male',
+                                                  phone: apt.phone || apt.patientPhone || 'N/A'
+                                                };
+                                printLatestPrescriptionForPatient(patient, apt.doctor);
+                              }}
+                            >
+                              <FileText className="w-4 h-4 text-emerald-600" />
                             </Button>
                           )}
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => printAppointmentToken(apt)}>
