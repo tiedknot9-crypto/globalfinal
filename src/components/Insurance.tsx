@@ -73,7 +73,10 @@ export default function Insurance() {
   });
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = insuranceRecords.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const [insuranceData, patientsData, hospitalData] = await Promise.all([
       supabaseService.getInsuranceClaims(),
       supabaseService.getPatients(),

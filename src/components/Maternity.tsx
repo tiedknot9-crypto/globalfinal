@@ -152,7 +152,10 @@ export default function Maternity() {
   );
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = deliveries.length === 0 && newborns.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const [patientsData, deliveriesData, newbornsData, staffData] = await Promise.all([
       supabaseService.getPatients(),
       supabaseService.getDeliveries(),

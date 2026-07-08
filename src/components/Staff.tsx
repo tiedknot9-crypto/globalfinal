@@ -81,7 +81,10 @@ export default function Staff() {
   };
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = staff.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const data = await supabaseService.getStaff();
     if (data) setStaff(data);
     setLoading(false);

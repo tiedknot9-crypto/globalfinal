@@ -380,7 +380,10 @@ export default function Lab() {
   ];
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = testOrders.length === 0 && patients.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const [patientsData, testsData, ordersData, radiologyData, invoicesData, appointmentsData] = await Promise.all([
       supabaseService.getPatients(),
       supabaseService.getLabTests(),

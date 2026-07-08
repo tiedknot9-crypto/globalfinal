@@ -2638,7 +2638,7 @@ export default function OPD() {
                               }}
                             >
                               <FileText className="w-4 h-4" />
-                              Prescription
+                              {isReceptionist ? "Record Vitals" : "Prescription"}
                             </Button>
                           )}
                           <Button 
@@ -2872,12 +2872,12 @@ export default function OPD() {
                               Collect ₹{Math.max(0, (apt.fee || appointmentFee) - (apt.discount_amount || apt.discountAmount || 0))}
                             </Button>
                           ) : null}
-                          {(canUserEditClinicalData(currentUser?.role) || normalizeRole(currentUser?.role) === 'RECEPTIONIST') && (
+                          {(canUserEditClinicalData(currentUser?.role) || isReceptionist) && (
                             <Button 
                               variant="ghost" 
                               size="icon" 
                               className="h-8 w-8 text-emerald-600" 
-                              title="Write Prescription"
+                              title={isReceptionist ? "Record Vitals" : "Write Prescription"}
                               onClick={() => {
                                 const patient = patients.find(p => isPatientIdMatch(p.id, apt.patientId)) || 
                                                 patients.find(p => p.name === apt.patientName) ||

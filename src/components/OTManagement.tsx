@@ -53,7 +53,10 @@ export default function OTManagement() {
   const [newOp, setNewOp] = useState({ patientId: '', surgeonId: '', theatreId: '', operationName: '', date: '', time: '' });
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = theatres.length === 0 && records.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const [theatresData, recordsData, patientsData, staffData] = await Promise.all([
       supabaseService.getOTRooms(),
       supabaseService.getOTSchedules(),

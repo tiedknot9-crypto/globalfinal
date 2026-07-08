@@ -51,7 +51,10 @@ export default function NursingStation() {
   const [showPatientResults, setShowPatientResults] = useState(false);
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = tasks.length === 0 && patients.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     const [tasksData, patientsData, vitalsData, shiftsData, staffData] = await Promise.all([
       supabaseService.getNursingTasks(),
       supabaseService.getPatients(),

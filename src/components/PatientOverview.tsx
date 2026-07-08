@@ -1029,7 +1029,7 @@ View full details at: ${shareUrl}
               {isReceptionist ? (
                 <>
                   <FileText className="w-4 h-4" />
-                  Enter Vitals / View Prescription
+                  Record Vitals
                 </>
               ) : (
                 <>

@@ -22,16 +22,37 @@ export function useDataSync(fetchData: () => void | Promise<void>, deps: any[] =
 
   // Subscribe to local/remote real-time database change events.
   useEffect(() => {
+    let timeoutId: any = null;
+
+    const debouncedFetch = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      timeoutId = setTimeout(() => {
+        fetchRef.current();
+      }, 150); // Debounce to prevent multiple rapid successive refetches and flickering
+    };
+
     const handleSync = (event: Event) => {
       const customEvent = event as CustomEvent;
-      console.log('useDataSync: Refreshing component state due to real-time database change event:', customEvent.detail);
-      fetchRef.current();
+      const detail = customEvent.detail;
+      
+      // If the sync event is for a local storage key, do NOT trigger database refetch!
+      if (detail && typeof detail === 'object') {
+        const table = detail.table;
+        if (typeof table === 'string' && (table.startsWith('hms_') || table.startsWith('storage_'))) {
+          return;
+        }
+      }
+      
+      console.log('useDataSync: Refreshing component state due to real-time database change event:', detail);
+      debouncedFetch();
     };
 
     const handleStorage = (event: StorageEvent) => {
       if (!event.key || event.key.startsWith('hms_')) {
         console.log('useDataSync: Storage key updated or manual storage event, refreshing:', event.key || 'manual');
-        fetchRef.current();
+        debouncedFetch();
       }
     };
 
@@ -43,7 +64,7 @@ export function useDataSync(fetchData: () => void | Promise<void>, deps: any[] =
         localChannel.onmessage = (event) => {
           if (event.data && event.data.key && event.data.key.startsWith('hms_')) {
             console.log('useDataSync: Local BroadcastChannel sync received for key:', event.data.key);
-            fetchRef.current();
+            debouncedFetch();
           }
         };
       }
@@ -56,6 +77,9 @@ export function useDataSync(fetchData: () => void | Promise<void>, deps: any[] =
     return () => {
       window.removeEventListener('supabase-data-sync', handleSync);
       window.removeEventListener('storage', handleStorage);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (localChannel) {
         try {
           localChannel.close();

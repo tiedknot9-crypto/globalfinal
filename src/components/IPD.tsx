@@ -221,7 +221,10 @@ export default function IPD() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = async () => {
-    setLoading(true);
+    const isInitial = beds.length === 0 && patients.length === 0;
+    if (isInitial) {
+      setLoading(true);
+    }
     try {
       const [bedsData, patientsData, admissionsData, dischargeSummariesData, staffData, otSchedulesData, invoicesData, otRoomsData] = await Promise.all([
         supabaseService.getBeds(),
