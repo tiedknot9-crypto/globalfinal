@@ -1151,21 +1151,10 @@ export function isDummyPatient(p: any): boolean {
   if (!p) return false;
   const id = String(p.id || p.patientId || p.patient_id || '').toLowerCase().trim();
   
-  const exactDummyIds = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p10'];
-  const deterministicDummyIds = [
-    '00000000-0000-4000-a000-000000000001',
-    '00000000-0000-4000-a000-000000000002',
-    '00000000-0000-4000-a000-000000000003',
-    '00000000-0000-4000-a000-000000000004',
-    '00000000-0000-4000-a000-000000000005',
-    '00000000-0000-4000-a000-000000000006',
-    '00000000-0000-4000-a000-000000000007',
-    '00000000-0000-4000-a000-000000000008',
-    '00000000-0000-4000-a000-000000000009',
-    '00000000-0000-4000-a000-000000000010'
-  ];
-
-  if (exactDummyIds.includes(id) || deterministicDummyIds.includes(id) || id.startsWith('dummy') || id.startsWith('mock')) {
+  // Keep explicitly prefixed "dummy" or "mock" entries filtered out, 
+  // but allow the standard pre-populated records (p1-p10 and their deterministic UUIDs) 
+  // to be active and discoverable so that actions like prescriptions and billing work perfectly.
+  if (id.startsWith('dummy') || id.startsWith('mock')) {
     return true;
   }
 

@@ -57,10 +57,25 @@ import { formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { playNotificationSound } from '@/lib/notifications';
-import { supabaseService, toDeterministicUuid } from '@/services/supabaseService';
+import { supabaseService, toDeterministicUuid, isUuid } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { canUserEditRecord, canUserEditClinicalData, canUserManageBilling, normalizeRole, canUserModifyRecord } from '@/utils/rbac';
 import { getPrescriptionPrintHtml } from '@/lib/prescriptionPrint';
+
+const isPatientIdMatch = (id1: any, id2: any): boolean => {
+  if (!id1 || !id2) return false;
+  const s1 = String(id1).trim();
+  const s2 = String(id2).trim();
+  if (s1 === s2) return true;
+  try {
+    const isUuidFormat = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    const u1 = isUuidFormat(s1) ? s1 : toDeterministicUuid(s1);
+    const u2 = isUuidFormat(s2) ? s2 : toDeterministicUuid(s2);
+    return u1 === u2;
+  } catch {
+    return false;
+  }
+};
 
 const getLocalDateString = () => {
   const d = new Date();
@@ -713,7 +728,7 @@ export default function OPD() {
       return;
     }
     setEditingAppointment(apt);
-    const patObj = patients.find(p => p.id === apt.patient_id || p.id === apt.patientId);
+    const patObj = patients.find(p => isPatientIdMatch(p.id, apt.patient_id) || isPatientIdMatch(p.id, apt.patientId));
     setPatientSearchTerm(patObj?.name || apt.patientName || '');
     setNewAppointment({
       patientId: apt.patient_id || apt.patientId || '',
@@ -1545,8 +1560,8 @@ export default function OPD() {
       toast.error('Please allow popups/tabs to print OPD tokens');
       return;
     }
-    const patName = patients.find(p => p.id === apt.patientId || p.id === apt.patient_id)?.name || apt.patientName || 'WALK-IN PATIENT';
-    const patMRN = patients.find(p => p.id === apt.patientId || p.id === apt.patient_id)?.mrn || apt.patientMrn || 'N/A';
+    const patName = patients.find(p => isPatientIdMatch(p.id, apt.patientId) || isPatientIdMatch(p.id, apt.patient_id))?.name || apt.patientName || 'WALK-IN PATIENT';
+    const patMRN = patients.find(p => isPatientIdMatch(p.id, apt.patientId) || isPatientIdMatch(p.id, apt.patient_id))?.mrn || apt.patientMrn || 'N/A';
     
     const tokenHtml = `
       <html>
@@ -1564,7 +1579,7 @@ export default function OPD() {
         </head>
         <body onload="window.print(); window.close();">
           <div class="header">
-            <div class="hospital-name">GLOBAL HOSPITAL & MATERNITY CENTER</div>
+            <div class="hospital-name">GLOBAL HOSPITAL</div>
             <div style="font-size: 10px; font-weight: Bold; margin-top: 3px; color: #444;">OPD CLINIC APPOINTMENT SLIP</div>
           </div>
           <div>
@@ -1700,7 +1715,7 @@ export default function OPD() {
             
             // Check if the patient of this appointment is assigned to this doctor
             const pId = apt.patient_id || apt.patientId;
-            const patient = patients.find(p => p.id === pId);
+            const patient = patients.find(p => isPatientIdMatch(p.id, pId));
             const isAssignedToMe = patient && (
               (patient.attending_doctor_id && docId && String(patient.attending_doctor_id).toLowerCase() === String(docId).toLowerCase()) ||
               (patient.attendingDoctorId && docId && String(patient.attendingDoctorId).toLowerCase() === String(docId).toLowerCase()) ||
@@ -2573,7 +2588,7 @@ export default function OPD() {
                               Book Appointment
                             </Button>
                           )}
-                          {canUserEditClinicalData(currentUser?.role) && (
+                          {(canUserEditClinicalData(currentUser?.role) || normalizeRole(currentUser?.role) === 'RECEPTIONIST') && (
                             <Button 
                               variant="ghost" 
                               size="sm" 
@@ -2817,14 +2832,14 @@ export default function OPD() {
                               Collect ₹{Math.max(0, (apt.fee || appointmentFee) - (apt.discount_amount || apt.discountAmount || 0))}
                             </Button>
                           ) : null}
-                          {canUserEditClinicalData(currentUser?.role) && (
+                          {(canUserEditClinicalData(currentUser?.role) || normalizeRole(currentUser?.role) === 'RECEPTIONIST') && (
                             <Button 
                               variant="ghost" 
                               size="icon" 
                               className="h-8 w-8 text-emerald-600" 
                               title="Write Prescription"
                               onClick={() => {
-                                const patient = patients.find(p => p.id === apt.patientId) || 
+                                const patient = patients.find(p => isPatientIdMatch(p.id, apt.patientId)) || 
                                                 patients.find(p => p.name === apt.patientName) ||
                                                 patients.find(p => p.mrn === apt.patientMrn);
                                 if (patient) {
@@ -2853,7 +2868,7 @@ export default function OPD() {
                               className="h-8 w-8 text-amber-600 hover:bg-amber-50" 
                               title="Patient Clinical History"
                               onClick={() => {
-                                const patient = patients.find(p => p.id === apt.patientId);
+                                const patient = patients.find(p => isPatientIdMatch(p.id, apt.patientId));
                                 if (patient) {
                                   setSelectedPatient(patient);
                                   loadPatientHistory(patient.id);
@@ -2873,7 +2888,7 @@ export default function OPD() {
                               className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" 
                               title="Print Latest Prescription"
                               onClick={() => {
-                                const patient = patients.find(p => p.id === apt.patientId) || 
+                                const patient = patients.find(p => isPatientIdMatch(p.id, apt.patientId)) || 
                                                 patients.find(p => p.name === apt.patientName) ||
                                                 patients.find(p => p.mrn === apt.patientMrn) || {
                                                   id: apt.patientId || `temp-${Math.random().toString(36).substring(2, 11)}`,

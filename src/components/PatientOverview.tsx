@@ -38,9 +38,24 @@ import { Label } from '@/components/ui/label';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { toast } from 'sonner';
-import { supabaseService } from '@/services/supabaseService';
+import { supabaseService, toDeterministicUuid } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { getPrescriptionPrintHtml } from '@/lib/prescriptionPrint';
+
+const isPatientIdMatch = (id1: any, id2: any): boolean => {
+  if (!id1 || !id2) return false;
+  const s1 = String(id1).trim();
+  const s2 = String(id2).trim();
+  if (s1 === s2) return true;
+  try {
+    const isUuidFormat = (val: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+    const u1 = isUuidFormat(s1) ? s1 : toDeterministicUuid(s1);
+    const u2 = isUuidFormat(s2) ? s2 : toDeterministicUuid(s2);
+    return u1 === u2;
+  } catch {
+    return false;
+  }
+};
 import { getPathologyReportHtml, getRadiologyReportHtml, getMaternityReportHtml } from '@/lib/reportPrint';
 import { getPatientReportHtml } from '@/lib/patientReportPrint';
 import { normalizeRole } from '@/utils/rbac';
@@ -193,7 +208,7 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
       const result = await supabaseService.updatePatient(selectedPatient.id, updatedPatient);
       if (result) {
         setSelectedPatient(result);
-        setPatients(prevPatients => prevPatients.map(p => p.id === selectedPatient.id ? result : p));
+        setPatients(prevPatients => prevPatients.map(p => isPatientIdMatch(p.id, selectedPatient.id) ? result : p));
         toast.success('Attending doctor updated successfully');
       }
     } catch (error: any) {
@@ -226,7 +241,7 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
 
   useEffect(() => {
     if (patientIdFromUrl) {
-      const patient = patients.find(p => p.id === patientIdFromUrl);
+      const patient = patients.find(p => p.id === patientIdFromUrl || isPatientIdMatch(p.id, patientIdFromUrl));
       if (patient) {
         if (isDoctor && assignedPatientIds && !assignedPatientIds.has(patient.id)) {
           setSelectedPatient(null);
@@ -234,7 +249,7 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
           return;
         }
         setSelectedPatient(patient);
-        fetchPatientDetails(patientIdFromUrl);
+        fetchPatientDetails(patient.id);
       }
     } else {
       setSelectedPatient(null);
@@ -373,7 +388,7 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
       phone: '+91 98765 43210'
     });
 
-    const motherNewborns = maternityNewborns.filter(b => b.mother_id === selectedPatient.id);
+    const motherNewborns = maternityNewborns.filter(b => isPatientIdMatch(b.mother_id, selectedPatient.id));
 
     const html = getMaternityReportHtml(
       {
@@ -477,8 +492,8 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
     if (!selectedPatient) return;
     
     const shareUrl = `${window.location.origin}/patient-overview?id=${selectedPatient.id}`;
-    const doctor = staff.find(u => u.id === selectedPatient.attending_doctor_id);
-    const claim = insuranceClaims.find(c => c.patient_id === selectedPatient.id);
+    const doctor = staff.find(u => isPatientIdMatch(u.id, selectedPatient.attending_doctor_id));
+    const claim = insuranceClaims.find(c => isPatientIdMatch(c.patient_id, selectedPatient.id));
     
     const patientData = `
 *Patient Overview: ${selectedPatient.name}*
@@ -678,7 +693,7 @@ View full details at: ${shareUrl}
 
     // Add prescriptions
     prescriptions
-      .filter(rx => rx.patientId === selectedPatient.id || rx.patient_id === selectedPatient.id)
+      .filter(rx => isPatientIdMatch(rx.patientId, selectedPatient.id) || isPatientIdMatch(rx.patient_id, selectedPatient.id))
       .forEach(rx => {
         const docName = staff.find(u => u.id === rx.doctor_id || u.id === rx.doctorId)?.name || 'Doctor';
         if (rx.diagnosis || rx.advice || (rx.medicines && rx.medicines.length > 0)) {
@@ -812,16 +827,16 @@ View full details at: ${shareUrl}
   };
 
   const calculateDues = (patientId: string) => {
-    const patientBills = billing.filter(b => b.patient_id === patientId || b.patientId === patientId);
+    const patientBills = billing.filter(b => isPatientIdMatch(b.patient_id, patientId) || isPatientIdMatch(b.patientId, patientId));
     const total = patientBills.reduce((acc, b) => acc + (Number(b.payable_amount ?? b.payableAmount ?? b.total_amount ?? b.totalAmount) || 0), 0);
     const paid = patientBills.reduce((acc, b) => acc + (Number(b.paid_amount ?? b.paidAmount) || 0), 0);
     return total - paid;
   };
 
-  const patientAppointments = useMemo(() => appointments.filter(a => a.patient_id === selectedPatient?.id || a.patientId === selectedPatient?.id), [appointments, selectedPatient]);
-  const patientBills = useMemo(() => billing.filter(b => b.patient_id === selectedPatient?.id || b.patientId === selectedPatient?.id), [billing, selectedPatient]);
-  const patientClaims = useMemo(() => insuranceClaims.filter(c => c.patient_id === selectedPatient?.id || c.patientId === selectedPatient?.id), [insuranceClaims, selectedPatient]);
-  const currentBed = useMemo(() => beds.find(b => b.patient_id === selectedPatient?.id || b.patientId === selectedPatient?.id), [beds, selectedPatient]);
+  const patientAppointments = useMemo(() => appointments.filter(a => isPatientIdMatch(a.patient_id, selectedPatient?.id) || isPatientIdMatch(a.patientId, selectedPatient?.id)), [appointments, selectedPatient]);
+  const patientBills = useMemo(() => billing.filter(b => isPatientIdMatch(b.patient_id, selectedPatient?.id) || isPatientIdMatch(b.patientId, selectedPatient?.id)), [billing, selectedPatient]);
+  const patientClaims = useMemo(() => insuranceClaims.filter(c => isPatientIdMatch(c.patient_id, selectedPatient?.id) || isPatientIdMatch(c.patientId, selectedPatient?.id)), [insuranceClaims, selectedPatient]);
+  const currentBed = useMemo(() => beds.find(b => isPatientIdMatch(b.patient_id, selectedPatient?.id) || isPatientIdMatch(b.patientId, selectedPatient?.id)), [beds, selectedPatient]);
   const dues = useMemo(() => selectedPatient ? calculateDues(selectedPatient.id) : 0, [selectedPatient, billing]);
 
   if (isLoading) {
@@ -913,7 +928,7 @@ View full details at: ${shareUrl}
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          {isClinicalRole && (
+          {(isClinicalRole || normalizeRole(currentUser?.role || userRole) === 'RECEPTIONIST') && (
             <Button variant="outline" className="gap-2 border-medical-blue text-medical-blue hover:bg-blue-50" onClick={() => setIsPrescriptionOpen(true)}>
               <Plus className="w-4 h-4" />
               Write Prescription
@@ -1258,13 +1273,13 @@ View full details at: ${shareUrl}
                 <div className="h-[250px] overflow-y-auto custom-scrollbar flex-1">
                   <div className="p-4 space-y-3">
                     {labSubTab === 'pathology' ? (
-                      labOrders.filter(o => o.patientId === selectedPatient.id).length === 0 ? (
+                      labOrders.filter(o => isPatientIdMatch(o.patientId, selectedPatient.id)).length === 0 ? (
                         <div className="text-center py-10 opacity-30 flex flex-col items-center">
                           <Activity className="w-8 h-8 mb-2 text-purple-500" />
                           <p className="text-xs font-bold uppercase">No pathology reports</p>
                         </div>
                       ) : (
-                        labOrders.filter(o => o.patientId === selectedPatient.id).map(order => (
+                        labOrders.filter(o => isPatientIdMatch(o.patientId, selectedPatient.id)).map(order => (
                           <div key={order.id} className={`p-3 rounded-xl border border-slate-100 ${order.status === 'Completed' || order.status === 'Released' ? 'bg-emerald-50/30' : 'bg-slate-50'}`}>
                             <div className="flex justify-between items-start mb-2">
                               <div>
@@ -1418,13 +1433,13 @@ View full details at: ${shareUrl}
               <CardContent className="p-0 flex-1 overflow-hidden">
                 <div className="h-[250px] overflow-y-auto custom-scrollbar">
                   <div className="p-4 space-y-3">
-                    {pharmacyBills.filter(b => b.patientId === selectedPatient.id).length === 0 ? (
+                    {pharmacyBills.filter(b => isPatientIdMatch(b.patientId, selectedPatient.id)).length === 0 ? (
                       <div className="text-center py-10 opacity-30 flex flex-col items-center">
                         <ShoppingCart className="w-8 h-8 mb-2" />
                         <p className="text-xs font-bold uppercase">No purchase history</p>
                       </div>
                     ) : (
-                      pharmacyBills.filter(b => b.patientId === selectedPatient.id).map(bill => (
+                      pharmacyBills.filter(b => isPatientIdMatch(b.patientId, selectedPatient.id)).map(bill => (
                         <div key={bill.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100">
                           <div className="flex justify-between mb-2">
                             <p className="text-xs font-black text-slate-800">#{bill.id.toUpperCase()}</p>
@@ -1462,10 +1477,10 @@ View full details at: ${shareUrl}
               <CardContent className="p-0">
                 <div className="h-[250px] overflow-y-auto custom-scrollbar">
                   <div className="p-4 space-y-3">
-                    {prescriptions.filter(rx => rx.patientId === selectedPatient.id || rx.patient_id === selectedPatient.id).length === 0 ? (
+                    {prescriptions.filter(rx => isPatientIdMatch(rx.patientId, selectedPatient.id) || isPatientIdMatch(rx.patient_id, selectedPatient.id)).length === 0 ? (
                       <p className="text-xs text-slate-400 text-center py-8 italic">No prescription history</p>
                     ) : (
-                      prescriptions.filter(rx => rx.patientId === selectedPatient.id || rx.patient_id === selectedPatient.id).map(rx => (
+                      prescriptions.filter(rx => isPatientIdMatch(rx.patientId, selectedPatient.id) || isPatientIdMatch(rx.patient_id, selectedPatient.id)).map(rx => (
                         <div key={rx.id} className="p-3 rounded-xl bg-blue-50/50 border border-blue-100">
                           <div className="flex justify-between items-start mb-2">
                             <p className="text-[10px] font-bold text-blue-600 uppercase">
@@ -1587,7 +1602,7 @@ View full details at: ${shareUrl}
                   ) : (
                     <div className="space-y-4">
                       {maternityDeliveries.map(delivery => {
-                        const newborns = maternityNewborns.filter(b => b.mother_id === selectedPatient.id);
+                        const newborns = maternityNewborns.filter(b => isPatientIdMatch(b.mother_id, selectedPatient.id));
                         return (
                           <div key={delivery.id} className="p-4 rounded-xl border border-pink-100 bg-white shadow-xs">
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
