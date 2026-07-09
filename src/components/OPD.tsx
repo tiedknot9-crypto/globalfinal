@@ -584,22 +584,46 @@ export default function OPD() {
     
     const initialDoc = getPrefetchedDoctorName(patient);
 
-    setPrescription({
-      doctor: initialDoc,
-      date: new Date().toISOString().split('T')[0],
-      medicines: [{ name: '', dosage: '', frequency: '', duration: '' }],
-      advice: '',
-      attachmentUrl: '',
-      attachmentName: '',
-      vitals: {
-        bp: '',
-        pulse: '',
-        temp: '',
-        spo2: '',
-        weight: '',
-        rr: ''
-      }
-    });
+    const existingRx = savedPrescriptions
+      .filter(rx => rx.patientId === patient.id || rx.patient_id === patient.id)
+      .sort((a, b) => new Date(b.date || b.prescription_date || 0).getTime() - new Date(a.date || a.prescription_date || 0).getTime())[0];
+
+    if (existingRx) {
+      setPrescription({
+        id: existingRx.id,
+        doctor: existingRx.doctor || existingRx.doctor_name || initialDoc,
+        date: existingRx.date || existingRx.prescription_date || new Date().toISOString().split('T')[0],
+        medicines: existingRx.medicines && existingRx.medicines.length > 0 ? existingRx.medicines : [{ name: '', dosage: '', frequency: '', duration: '' }],
+        advice: existingRx.advice || existingRx.notes || '',
+        attachmentUrl: existingRx.attachmentUrl || '',
+        attachmentName: existingRx.attachmentName || '',
+        vitals: existingRx.vitals || {
+          bp: '',
+          pulse: '',
+          temp: '',
+          spo2: '',
+          weight: '',
+          rr: ''
+        }
+      });
+    } else {
+      setPrescription({
+        doctor: initialDoc,
+        date: new Date().toISOString().split('T')[0],
+        medicines: [{ name: '', dosage: '', frequency: '', duration: '' }],
+        advice: '',
+        attachmentUrl: '',
+        attachmentName: '',
+        vitals: {
+          bp: '',
+          pulse: '',
+          temp: '',
+          spo2: '',
+          weight: '',
+          rr: ''
+        }
+      });
+    }
     
     setIsPrescriptionOpen(true);
   };

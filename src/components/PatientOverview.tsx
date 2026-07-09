@@ -578,6 +578,48 @@ View full details at: ${shareUrl}
     printWindow.document.close();
   };
 
+  const openPrescriptionModal = () => {
+    if (!selectedPatient) return;
+
+    const existingRx = prescriptions
+      .filter(rx => isPatientIdMatch(rx.patientId, selectedPatient.id) || isPatientIdMatch(rx.patient_id, selectedPatient.id))
+      .sort((a, b) => new Date(b.date || b.prescription_date || 0).getTime() - new Date(a.date || a.prescription_date || 0).getTime())[0];
+
+    const latestVitals = vitals && vitals.length > 0 ? vitals[0] : undefined;
+
+    if (existingRx) {
+      setNewPrescription({
+        diagnosis: existingRx.diagnosis || '',
+        advice: existingRx.advice || existingRx.notes || '',
+        medicines: existingRx.medicines && existingRx.medicines.length > 0 ? existingRx.medicines : [{ name: '', dosage: '', frequency: '' }],
+        vitals: existingRx.vitals || {
+          bp: latestVitals?.bp || '',
+          pulse: latestVitals?.pulse || '',
+          temp: latestVitals?.temp || '',
+          spo2: latestVitals?.spo2 || '',
+          weight: latestVitals?.weight || '',
+          rr: latestVitals?.rr || latestVitals?.respiration || ''
+        }
+      });
+    } else {
+      setNewPrescription({
+        medicines: [{ name: '', dosage: '', frequency: '' }],
+        diagnosis: '',
+        advice: '',
+        vitals: {
+          bp: latestVitals?.bp || '',
+          pulse: latestVitals?.pulse || '',
+          temp: latestVitals?.temp || '',
+          spo2: latestVitals?.spo2 || '',
+          weight: latestVitals?.weight || '',
+          rr: latestVitals?.rr || latestVitals?.respiration || ''
+        }
+      });
+    }
+
+    setIsPrescriptionOpen(true);
+  };
+
   const handlePrintBlankPrescription = () => {
     handlePrintPrescription();
   };
@@ -1025,7 +1067,7 @@ View full details at: ${shareUrl}
         </div>
         <div className="flex flex-wrap gap-2">
           {(isClinicalRole || isReceptionist) && (
-            <Button variant="outline" className="gap-2 border-medical-blue text-medical-blue hover:bg-blue-50" onClick={() => setIsPrescriptionOpen(true)}>
+            <Button variant="outline" className="gap-2 border-medical-blue text-medical-blue hover:bg-blue-50" onClick={openPrescriptionModal}>
               {isReceptionist ? (
                 <>
                   <FileText className="w-4 h-4" />
@@ -2025,8 +2067,17 @@ View full details at: ${shareUrl}
               </div>
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsPrescriptionOpen(false)}>Cancel</Button>
+            <Button 
+              type="button"
+              variant="outline" 
+              className="gap-2 border-emerald-200 text-emerald-600 hover:bg-emerald-50" 
+              onClick={() => handlePrintPrescription(newPrescription)}
+            >
+              <Printer className="w-4 h-4" />
+              Print
+            </Button>
             <Button className="bg-medical-blue" onClick={handleSavePrescription}>
               {isReceptionist ? 'Save Vitals Only' : 'Save Prescription'}
             </Button>
