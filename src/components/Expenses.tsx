@@ -124,6 +124,7 @@ export default function Expenses() {
     if (result) {
       toast.success('Expense recorded');
       fetchExpenses();
+      window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'expenses', action: 'insert' } }));
       setNewExpense({ 
         expense_date: new Date().toISOString().split('T')[0], 
         category: 'Utilities', 
@@ -161,6 +162,7 @@ export default function Expenses() {
     if (result) {
       toast.success('Expense record updated');
       fetchExpenses();
+      window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'expenses', action: 'update' } }));
       setEditingExpense(null);
       setIsEditExpenseOpen(false);
     } else {
@@ -184,6 +186,7 @@ export default function Expenses() {
     if (success) {
       toast.success('Expense record removed');
       fetchExpenses();
+      window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'expenses', action: 'delete' } }));
     } else {
       toast.error('Failed to remove expense record');
     }

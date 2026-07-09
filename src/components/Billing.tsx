@@ -3233,10 +3233,24 @@ export default function Billing() {
                   {(() => {
                     const displayedBills = filterCategory === 'expenses'
                       ? expenses
-                          .filter(exp => 
-                            (exp.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            (exp.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-                          )
+                          .filter(exp => {
+                            const matchesSearch = 
+                              (exp.category || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              (exp.description || '').toLowerCase().includes(searchQuery.toLowerCase());
+                            if (!matchesSearch) return false;
+
+                            const expDateStr = exp.expense_date || exp.created_at || '';
+                            const expDate = expDateStr ? expDateStr.split('T')[0] : '';
+
+                            let dateRangeMatch = true;
+                            if (recentInvoicesStartDate) {
+                              dateRangeMatch = dateRangeMatch && expDate >= recentInvoicesStartDate;
+                            }
+                            if (recentInvoicesEndDate) {
+                              dateRangeMatch = dateRangeMatch && expDate <= recentInvoicesEndDate;
+                            }
+                            return dateRangeMatch;
+                          })
                           .map(exp => ({
                             id: exp.id,
                             patients: { name: `Facility Expense`, mrn: exp.category, phone: `N/A`, email: exp.description },

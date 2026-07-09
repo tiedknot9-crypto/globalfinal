@@ -3940,6 +3940,10 @@ function updateLocalCacheOnMutation(key: string, args: any[], result: any) {
         const list = storage.get('hms_live_queue', []);
         const updated = list.map((q: any) => q.id === id ? { ...q, ...result } : q);
         storage.set('hms_live_queue', updated);
+      } else if (k.includes('expense')) {
+        const list = storage.get(STORAGE_KEYS.EXPENSES, []);
+        const updated = list.map((e: any) => e.id === id ? { ...e, ...result } : e);
+        storage.set(STORAGE_KEYS.EXPENSES, updated);
       }
     } else if (key.startsWith('delete')) {
       const id = args[0];
