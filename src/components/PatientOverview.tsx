@@ -524,7 +524,22 @@ View full details at: ${shareUrl}
   const handlePrintPrescription = (prescriptionData?: any) => {
     if (!selectedPatient) return;
 
-    const doctor = staff.find(u => u.id === (prescriptionData?.doctorId || prescriptionData?.doctor_id || selectedPatient.attending_doctor_id));
+    let doctor = staff.find(u => u.id === (prescriptionData?.doctorId || prescriptionData?.doctor_id || selectedPatient.attending_doctor_id)) ||
+                 staff.find(u => u.name === (prescriptionData?.doctor || prescriptionData?.doctor_name));
+
+    if (!doctor && (prescriptionData?.doctor || prescriptionData?.doctor_name)) {
+      doctor = {
+        name: prescriptionData.doctor || prescriptionData.doctor_name,
+        degree: prescriptionData.doctorDegree || prescriptionData.doctor_degree || '',
+        specialization: prescriptionData.doctorSpecialization || prescriptionData.doctor_specialization || prescriptionData.department || '',
+        department: prescriptionData.department || prescriptionData.doctorDepartment || prescriptionData.doctor_department || '',
+        id: prescriptionData.doctorId || prescriptionData.doctor_id || ''
+      };
+    }
+
+    if (!doctor && selectedPatient.attending_doctor_id) {
+      doctor = staff.find(u => u.id === selectedPatient.attending_doctor_id);
+    }
     
     const hospitalInfo = storage.get<{ name: string; address: string; phone: string }>(STORAGE_KEYS.HOSPITAL_INFO, {
       name: 'GLOBAL HOSPITAL',
@@ -540,6 +555,16 @@ View full details at: ${shareUrl}
 
     const latestVitals = vitals && vitals.length > 0 ? vitals[0] : undefined;
 
+    // Use vitals stored on the prescription first, otherwise fall back to latestVitals
+    const prescriptionVitals = prescriptionData?.vitals || (latestVitals ? {
+      bp: latestVitals.bp,
+      pulse: latestVitals.pulse,
+      temp: latestVitals.temp,
+      spo2: latestVitals.spo2,
+      weight: latestVitals.weight,
+      rr: latestVitals.rr || latestVitals.respiration
+    } : undefined);
+
     const html = getPrescriptionPrintHtml(
       {
         name: selectedPatient.name,
@@ -551,24 +576,10 @@ View full details at: ${shareUrl}
       },
       prescriptionData ? {
         ...prescriptionData,
-        vitals: latestVitals ? {
-          bp: latestVitals.bp,
-          pulse: latestVitals.pulse,
-          temp: latestVitals.temp,
-          spo2: latestVitals.spo2,
-          weight: latestVitals.weight,
-          rr: latestVitals.rr || latestVitals.respiration
-        } : undefined
+        vitals: prescriptionVitals
       } : { 
         medicines: [],
-        vitals: latestVitals ? {
-          bp: latestVitals.bp,
-          pulse: latestVitals.pulse,
-          temp: latestVitals.temp,
-          spo2: latestVitals.spo2,
-          weight: latestVitals.weight,
-          rr: latestVitals.rr || latestVitals.respiration
-        } : undefined
+        vitals: prescriptionVitals
       },
       doctor,
       hospitalInfo
