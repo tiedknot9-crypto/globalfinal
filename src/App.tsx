@@ -592,13 +592,16 @@ export default function App() {
         const offlinePrescriptions = prescriptions.filter((rx: any) => rx.id && String(rx.id).startsWith('off-'));
         const bills = storage.get(STORAGE_KEYS.BILLING, []);
         const offlineInvoices = bills.filter((b: any) => b.id && String(b.id).startsWith('off-'));
+        const expenses = storage.get(STORAGE_KEYS.EXPENSES, []);
+        const offlineExpenses = expenses.filter((e: any) => e.id && String(e.id).startsWith('off-'));
         
         const hasOfflineData = (
           offlinePatients.length > 0 || 
           offlineAppointments.length > 0 || 
           offlineAdmissions.length > 0 || 
           offlinePrescriptions.length > 0 ||
-          offlineInvoices.length > 0
+          offlineInvoices.length > 0 ||
+          offlineExpenses.length > 0
         );
 
         if (hasOfflineData) {

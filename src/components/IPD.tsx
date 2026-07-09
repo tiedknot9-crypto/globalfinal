@@ -855,7 +855,10 @@ export default function IPD() {
     const pat = patients.find(p => p.id === patientId) || MOCK_PATIENTS.find(p => p.id === patientId);
     if (!pat) return '';
     const docId = pat.attending_doctor_id || pat.attendingDoctorId;
-    const doc = users.find(u => u.id === docId) || MOCK_USERS.find(u => u.id === docId);
+    const doc = docId ? (
+      users.find(u => String(u.id) === String(docId) || String(u.name).trim().toLowerCase() === String(docId).trim().toLowerCase()) || 
+      MOCK_USERS.find(u => String(u.id) === String(docId) || String(u.name).trim().toLowerCase() === String(docId).trim().toLowerCase())
+    ) : null;
     return doc ? doc.name : '';
   };
 
@@ -1502,10 +1505,10 @@ export default function IPD() {
       return;
     }
 
-    const patient = patients.find(p => p.id === patientId);
+    const patient = patients.find(p => String(p.id) === String(patientId));
     
     // Find and discharge the active admission record as well
-    const activeAdmission = admissions.find(a => a.bed_id === bedId && a.patient_id === patientId && a.status === 'Admitted');
+    const activeAdmission = admissions.find(a => String(a.bed_id) === String(bedId) && String(a.patient_id || a.patientId) === String(patientId) && a.status === 'Admitted');
     if (activeAdmission) {
       await supabaseService.dischargePatient(activeAdmission.id, new Date().toISOString());
     }
@@ -2087,7 +2090,8 @@ export default function IPD() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {displayBeds.filter(bed => {
                 if (!searchQuery) return true;
-                const patient = bed.patient_id ? patients.find(p => p.id === bed.patient_id) : null;
+                const bedPatId = bed.patient_id || bed.patientId;
+                const patient = bedPatId ? patients.find(p => String(p.id) === String(bedPatId)) : null;
                 const query = searchQuery.toLowerCase();
                 const numMatch = String(bed.bed_number || '').toLowerCase().includes(query);
                 const wardMatch = String(bed.ward || '').toLowerCase().includes(query);
@@ -2098,9 +2102,14 @@ export default function IPD() {
                        (patient.mrn || '').toLowerCase().includes(query) ||
                        numMatch || wardMatch || typeMatch;
               }).map((bed) => {
-                const patient = bed.patient_id ? patients.find(p => p.id === bed.patient_id) : null;
-                const doctor = patient?.attending_doctor_id ? users.find(u => u.id === patient.attending_doctor_id) : null;
-                const admission = bed.patient_id ? admissions.find(a => a.bed_id === bed.id && a.patient_id === bed.patient_id && a.status === 'Admitted') : null;
+                const bedPatId = bed.patient_id || bed.patientId;
+                const patient = bedPatId ? patients.find(p => String(p.id) === String(bedPatId)) : null;
+                const admission = bedPatId ? admissions.find(a => String(a.bed_id) === String(bed.id) && String(a.patient_id || a.patientId) === String(bedPatId) && a.status === 'Admitted') : null;
+                const docId = admission?.doctor_id || admission?.doctorId || patient?.attending_doctor_id || patient?.attendingDoctorId;
+                const doctor = docId ? users.find(u => 
+                  String(u.id) === String(docId) || 
+                  String(u.name).trim().toLowerCase() === String(docId).trim().toLowerCase()
+                ) : null;
                 const urgency = admission?.urgency || bed.urgency;
                 return (
                   <Card key={bed.id} className={`border-none shadow-sm transition-all hover:ring-2 hover:ring-medical-blue/10 ${bed.status === 'Occupied' ? 'bg-white' : 'bg-slate-50/50'}`}>
@@ -2316,19 +2325,24 @@ export default function IPD() {
                   </TableHeader>
                   <TableBody>
                     {displayBeds.filter(b => b.status === 'Occupied').map(bed => {
-                      const patient = patients.find(p => p.id === bed.patient_id);
-                      const doctor = patient?.attending_doctor_id ? users.find(u => u.id === patient.attending_doctor_id) : null;
-                      const admission = admissions.find(a => a.bed_id === bed.id && a.patient_id === bed.patient_id && a.status === 'Admitted');
+                      const bedPatId = bed.patient_id || bed.patientId;
+                      const patient = bedPatId ? patients.find(p => String(p.id) === String(bedPatId)) : null;
+                      const admission = bedPatId ? admissions.find(a => String(a.bed_id) === String(bed.id) && String(a.patient_id || a.patientId) === String(bedPatId) && a.status === 'Admitted') : null;
+                      const docId = admission?.doctor_id || admission?.doctorId || patient?.attending_doctor_id || patient?.attendingDoctorId;
+                      const doctor = docId ? users.find(u => 
+                        String(u.id) === String(docId) || 
+                        String(u.name).trim().toLowerCase() === String(docId).trim().toLowerCase()
+                      ) : null;
                       return (
                         <TableRow key={bed.id} className="hover:bg-slate-50/50 transition-colors">
                           <TableCell>
                             <div className="flex items-center gap-3">
                               <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
-                                {patient?.name.charAt(0)}
+                                {patient?.name?.charAt(0) || 'P'}
                               </div>
                               <div>
-                                <p className="text-sm font-bold">{patient?.name}</p>
-                                <p className="text-[10px] text-slate-500">{patient?.mrn}</p>
+                                <p className="text-sm font-bold">{patient?.name || 'Registered Patient'}</p>
+                                <p className="text-[10px] text-slate-500">{patient?.mrn || 'N/A'}</p>
                               </div>
                             </div>
                           </TableCell>
@@ -2819,7 +2833,8 @@ export default function IPD() {
                     </SelectTrigger>
                     <SelectContent>
                       {displayBeds.filter(b => b.status === 'Occupied').map(bed => {
-                        const pat = patients.find(p => p.id === bed.patient_id);
+                        const bedPatId = bed.patient_id || bed.patientId;
+                        const pat = bedPatId ? patients.find(p => String(p.id) === String(bedPatId)) : null;
                         return pat ? (
                           <SelectItem key={pat.id} value={pat.id}>
                             {pat.name} ({pat.mrn}) • Bed {bed.bed_number}
@@ -3139,7 +3154,7 @@ export default function IPD() {
                       <SelectContent>
                         {displayBeds.filter(b => b.status === 'Occupied').map(bed => {
                           const patId = bed.patient_id || bed.patientId;
-                          const pat = patients.find(p => p.id === patId);
+                          const pat = patId ? patients.find(p => String(p.id) === String(patId)) : null;
                           const bedNum = bed.bed_number || bed.number || bed.id;
                           return pat ? (
                             <SelectItem key={pat.id} value={pat.id}>

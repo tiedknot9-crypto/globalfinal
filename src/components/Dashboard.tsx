@@ -77,8 +77,8 @@ const getLocalDateString = () => {
 
 const getLocalDateStrFromVal = (val: any): string => {
   if (!val) return '';
-  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-    return val;
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+    return val.substring(0, 10);
   }
   const d = new Date(val);
   if (isNaN(d.getTime())) return '';
@@ -370,7 +370,7 @@ export default function Dashboard() {
     const now = new Date(); 
     
     return expenses.filter(exp => {
-      const dateVal = exp.expense_date;
+      const dateVal = exp.expense_date || exp.created_at;
       if (!dateVal) return false;
       const expLocalDateStr = getLocalDateStrFromVal(dateVal);
       if (!expLocalDateStr) return false;

@@ -8,31 +8,21 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_q0e5J5
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  console.log('Inserting sample patient...');
-  const mrn = 'MRN_TEST_' + Date.now();
-  const dummy = {
-    mrn,
-    name: 'Test Patient',
-    phone: '1234567890',
-    gender: 'male'
-  };
-  
+  console.log('Querying expenses matching description chemical or amount 5000...');
   const { data, error } = await supabase
-    .from('patients')
-    .insert([dummy])
-    .select();
+    .from('expenses')
+    .select('*');
   
   if (error) {
-    console.error('Error inserting patient:', error);
+    console.error('Error fetching expenses:', error);
   } else {
-    console.log('Patient successfully inserted. Columns:', Object.keys(data[0]));
-    
-    // Clean up
-    const { error: delErr } = await supabase
-      .from('patients')
-      .delete()
-      .eq('id', data[0].id);
-    console.log('Clean up result:', delErr || 'Success');
+    const matched = data?.filter((e: any) => 
+      (e.description && e.description.toLowerCase().includes('chemical')) || 
+      (e.category && e.category.toLowerCase().includes('chemical')) ||
+      e.amount === 5000
+    );
+    console.log('Matched', matched?.length, 'expenses.');
+    console.log(JSON.stringify(matched, null, 2));
   }
 }
 

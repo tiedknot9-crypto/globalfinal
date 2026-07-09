@@ -1167,6 +1167,8 @@ export function normalizeBed(b: any) {
   const num = b.bed_number || b.number || b.id || '';
   const bType = b.bed_type || b.type || 'General';
   const pId = b.patient_id || b.patientId || null;
+  const normalizedId = toDeterministicUuid(b.id);
+  const normalizedPatientId = pId ? toDeterministicUuid(pId) : null;
   
   // Normalize status to 'Available', 'Occupied' etc.
   let bStatus = b.status || 'Available';
@@ -1179,12 +1181,13 @@ export function normalizeBed(b: any) {
 
   return {
     ...b,
+    id: normalizedId,
     bed_number: num,
     number: num,
     bed_type: bType,
     type: bType,
-    patient_id: pId,
-    patientId: pId,
+    patient_id: normalizedPatientId,
+    patientId: normalizedPatientId,
     status: bStatus
   };
 }
@@ -3360,20 +3363,38 @@ const rawSupabaseService = {
         .order('admission_date', { ascending: false });
       
       if (error) throw error;
-      const mapped = data?.map((a: any) => ({
-        ...a,
-        urgency: a.urgency || a.reason || 'Routine',
-        reason: a.reason || '',
-        diagnosis: a.diagnosis || a.reason || ''
-      })) || [];
+      const mapped = data?.map((a: any) => {
+        const cleaned = cleanUuidFields(a);
+        if (cleaned.patient_id) cleaned.patientId = cleaned.patient_id;
+        if (cleaned.bed_id) cleaned.bedId = cleaned.bed_id;
+        if (cleaned.doctor_id) cleaned.doctorId = cleaned.doctor_id;
+        return {
+          ...cleaned,
+          urgency: cleaned.urgency || cleaned.reason || 'Routine',
+          reason: cleaned.reason || '',
+          diagnosis: cleaned.diagnosis || cleaned.reason || ''
+        };
+      }) || [];
       return mapped.filter((adm: any) => {
         const pat = { id: adm.patient_id || adm.patientId, name: adm.patient_name || adm.patientName };
         return !isDummyPatient(pat);
       });
     } catch (error: any) {
       console.warn('Handling local fallback for admissions:', error.message);
-      const localData = storage.get('hms_admissions', []);
-      return localData.filter((adm: any) => {
+      const localData = storage.get('hms_admissions', []) || [];
+      const mappedLocal = localData.map((a: any) => {
+        const cleaned = cleanUuidFields(a);
+        if (cleaned.patient_id) cleaned.patientId = cleaned.patient_id;
+        if (cleaned.bed_id) cleaned.bedId = cleaned.bed_id;
+        if (cleaned.doctor_id) cleaned.doctorId = cleaned.doctor_id;
+        return {
+          ...cleaned,
+          urgency: cleaned.urgency || cleaned.reason || 'Routine',
+          reason: cleaned.reason || '',
+          diagnosis: cleaned.diagnosis || cleaned.reason || ''
+        };
+      });
+      return mappedLocal.filter((adm: any) => {
         const pat = { id: adm.patient_id || adm.patientId, name: adm.patient_name || adm.patientName };
         return !isDummyPatient(pat);
       });
