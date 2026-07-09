@@ -1,5 +1,5 @@
 import { useState, useEffect, ReactNode } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Users, 
@@ -95,18 +95,7 @@ function ProtectedRoute({ children, allowedRoles, user }: { children: ReactNode,
   });
 
   if (!hasAccess) {
-    return (
-      <div className="flex flex-col items-center justify-center p-8 m-8 bg-slate-50 border border-slate-200 rounded-3xl min-h-[400px] text-center max-w-xl mx-auto shadow-sm">
-        <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-6">
-          <ShieldAlert className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Access Restricted</h2>
-        <p className="text-slate-600 text-sm mt-3 font-medium px-4">
-          Your current profile role <span className="px-2 py-0.5 rounded bg-rose-100 border border-rose-200 text-rose-700 font-bold uppercase text-xs">{user.role?.replace('_', ' ')}</span> does not have privileges to access this panelist panel.
-        </p>
-        <p className="text-slate-400 text-xs mt-3">Please use the menu links in the sidebar or consult your hospital manager for administrative privileges.</p>
-      </div>
-    );
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }
