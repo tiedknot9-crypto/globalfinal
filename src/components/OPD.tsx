@@ -1,4 +1,4 @@
-import { useState, ChangeEvent, useEffect } from 'react';
+import { useState, ChangeEvent, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import OPDPatientHistory from './OPDPatientHistory';
 import OPDSummaryView from './OPDSummaryView';
@@ -224,6 +224,12 @@ export default function OPD() {
   const [previewData, setPreviewData] = useState<{url: string, name: string} | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [mergePatientData, setMergePatientData] = useState<{ existing: any, newDetails: any, shouldRedirect?: boolean } | null>(null);
+  const [duplicateConfirm, setDuplicateConfirm] = useState<{
+    newPatientData: any;
+    duplicatePatient: any;
+    shouldRedirect?: boolean;
+  } | null>(null);
+  const isRegisteringRef = useRef(false);
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
   const userRole = currentUser?.role;
   const isAccountant = normalizeRole(currentUser?.role) === 'ACCOUNTANT';
@@ -932,15 +938,16 @@ export default function OPD() {
     }
   };
 
-  const handleRegistration = async (shouldRedirect: boolean = false) => {
+  const handleRegistration = async (shouldRedirect: boolean = false, bypassDuplicateCheck: boolean = false) => {
     if (!newPatient.name) {
       toast.error('Please enter the patient\'s Full Name');
       return;
     }
 
-    if (isSubmitting) return;
+    if (isSubmitting || isRegisteringRef.current) return;
+    isRegisteringRef.current = true;
 
-    if (!editingPatient) {
+    if (!editingPatient && !bypassDuplicateCheck) {
       const trimmedNewName = (newPatient.name || '').trim().toLowerCase();
       const trimmedNewPhone = (newPatient.phone || '').trim().replace(/\D/g, '');
       const trimmedNewEmail = (newPatient.email || '').trim().toLowerCase();
@@ -958,10 +965,11 @@ export default function OPD() {
           newDetails: { ...newPatient },
           shouldRedirect
         });
+        isRegisteringRef.current = false;
         return;
       }
 
-      const isDuplicate = patients.some((p: any) => {
+      const duplicatePatient = patients.find((p: any) => {
         const pName = (p.name || '').trim().toLowerCase();
         const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
         const pEmail = (p.email || '').trim().toLowerCase();
@@ -976,8 +984,13 @@ export default function OPD() {
         return false;
       });
 
-      if (isDuplicate) {
-        toast.warning('A patient with this Name and/or Phone Number is already registered!');
+      if (duplicatePatient) {
+        setDuplicateConfirm({
+          newPatientData: { ...newPatient },
+          duplicatePatient,
+          shouldRedirect
+        });
+        isRegisteringRef.current = false;
         return;
       }
     }
@@ -1159,6 +1172,7 @@ export default function OPD() {
       toast.error('An error occurred during registration');
     } finally {
       setIsSubmitting(false);
+      isRegisteringRef.current = false;
     }
   };
 
@@ -3018,6 +3032,43 @@ export default function OPD() {
             </Button>
             <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={confirmMergeAndContinue}>
               Yes, Merge Records
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Patient Agreement Dialog */}
+      <Dialog open={!!duplicateConfirm} onOpenChange={(open) => { if (!open) setDuplicateConfirm(null); }}>
+        <DialogContent id="opd-duplicate-confirm-dialog" className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              Duplicate Entry Warning
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <p className="text-sm text-slate-600 leading-relaxed">
+              A potential duplicate entry has been detected under patient registration.
+            </p>
+            <p className="text-xs text-slate-500 bg-amber-50 p-3 rounded-lg border border-amber-100">
+              An existing patient named <strong className="text-slate-900">{duplicateConfirm?.duplicatePatient?.name}</strong> 
+              {duplicateConfirm?.duplicatePatient?.phone && <> with phone number <strong className="text-slate-900">{duplicateConfirm?.duplicatePatient?.phone}</strong></>} 
+              is already registered (MRN: {duplicateConfirm?.duplicatePatient?.mrn}).
+            </p>
+            <p className="text-sm text-slate-600 font-medium">
+              Do you explicitly agree and wish to proceed with registering this patient anyway?
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button id="opd-duplicate-cancel-btn" variant="outline" onClick={() => setDuplicateConfirm(null)}>
+              No, Cancel
+            </Button>
+            <Button id="opd-duplicate-confirm-btn" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => {
+              const redirect = !!duplicateConfirm?.shouldRedirect;
+              setDuplicateConfirm(null);
+              handleRegistration(redirect, true);
+            }}>
+              Yes, I Agree & Proceed
             </Button>
           </DialogFooter>
         </DialogContent>

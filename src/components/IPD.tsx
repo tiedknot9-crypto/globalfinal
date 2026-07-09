@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Bed as BedIcon, 
@@ -514,6 +514,11 @@ export default function IPD() {
 
   const [isQuickRegistering, setIsQuickRegistering] = useState(false);
   const [mergePatientData, setMergePatientData] = useState<{ existing: any, newDetails: any } | null>(null);
+  const [duplicateConfirm, setDuplicateConfirm] = useState<{
+    newPatientData: any;
+    duplicatePatient: any;
+  } | null>(null);
+  const isQuickRegisteringRef = useRef(false);
 
   const confirmIPDMergeAndContinue = async () => {
     if (!mergePatientData) return;
@@ -573,49 +578,57 @@ export default function IPD() {
     insurancePolicyNumber: ''
   });
 
-  const handleQuickRegister = async () => {
+  const handleQuickRegister = async (bypassDuplicateCheck: boolean = false) => {
     if (!quickPatient.name || !quickPatient.age || !quickPatient.phone) {
       toast.error('Please fill in Patient Name, Age, and Contact Phone.');
       return;
     }
 
-    if (isQuickRegistering) return;
+    if (isQuickRegistering || isQuickRegisteringRef.current) return;
+    isQuickRegisteringRef.current = true;
 
-    // Duplicate check
-    const trimmedNewName = (quickPatient.name || '').trim().toLowerCase();
-    const trimmedNewPhone = (quickPatient.phone || '').trim().replace(/\D/g, '');
+    if (!bypassDuplicateCheck) {
+      // Duplicate check
+      const trimmedNewName = (quickPatient.name || '').trim().toLowerCase();
+      const trimmedNewPhone = (quickPatient.phone || '').trim().replace(/\D/g, '');
 
-    // Look for EXACT name and phone match for merge
-    const exactMatch = patients.find((p: any) => {
-      const pName = (p.name || '').trim().toLowerCase();
-      const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
-      return pName === trimmedNewName && pPhone === trimmedNewPhone && trimmedNewPhone !== '';
-    });
-
-    if (exactMatch) {
-      setMergePatientData({
-        existing: exactMatch,
-        newDetails: { ...quickPatient }
+      // Look for EXACT name and phone match for merge
+      const exactMatch = patients.find((p: any) => {
+        const pName = (p.name || '').trim().toLowerCase();
+        const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
+        return pName === trimmedNewName && pPhone === trimmedNewPhone && trimmedNewPhone !== '';
       });
-      return;
-    }
 
-    const isDuplicate = patients.some((p: any) => {
-      const pName = (p.name || '').trim().toLowerCase();
-      const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
+      if (exactMatch) {
+        setMergePatientData({
+          existing: exactMatch,
+          newDetails: { ...quickPatient }
+        });
+        isQuickRegisteringRef.current = false;
+        return;
+      }
 
-      const nameMatches = pName === trimmedNewName;
-      const phoneMatches = trimmedNewPhone && pPhone && (trimmedNewPhone === pPhone);
+      const duplicatePatient = patients.find((p: any) => {
+        const pName = (p.name || '').trim().toLowerCase();
+        const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
 
-      if (nameMatches && phoneMatches) return true;
-      if (trimmedNewPhone && trimmedNewPhone.length >= 10 && pPhone === trimmedNewPhone) return true;
-      if (nameMatches && !trimmedNewPhone && !pPhone) return true;
-      return false;
-    });
+        const nameMatches = pName === trimmedNewName;
+        const phoneMatches = trimmedNewPhone && pPhone && (trimmedNewPhone === pPhone);
 
-    if (isDuplicate) {
-      toast.warning('A patient with this Name and/or Phone Number is already registered!');
-      return;
+        if (nameMatches && phoneMatches) return true;
+        if (trimmedNewPhone && trimmedNewPhone.length >= 10 && pPhone === trimmedNewPhone) return true;
+        if (nameMatches && !trimmedNewPhone && !pPhone) return true;
+        return false;
+      });
+
+      if (duplicatePatient) {
+        setDuplicateConfirm({
+          newPatientData: { ...quickPatient },
+          duplicatePatient
+        });
+        isQuickRegisteringRef.current = false;
+        return;
+      }
     }
 
     setIsQuickRegistering(true);
@@ -658,6 +671,7 @@ export default function IPD() {
       toast.error('An error occurred during registration');
     } finally {
       setIsQuickRegistering(false);
+      isQuickRegisteringRef.current = false;
     }
   };
 
@@ -4464,6 +4478,42 @@ export default function IPD() {
             </Button>
             <Button className="bg-amber-600 hover:bg-amber-700 text-white" onClick={confirmIPDMergeAndContinue}>
               Yes, Merge Records
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Patient Agreement Dialog */}
+      <Dialog open={!!duplicateConfirm} onOpenChange={(open) => { if (!open) setDuplicateConfirm(null); }}>
+        <DialogContent id="ipd-duplicate-confirm-dialog" className="sm:max-w-[450px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              Duplicate Entry Warning
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-3">
+            <p className="text-sm text-slate-600 leading-relaxed">
+              A potential duplicate entry has been detected under inpatient registration.
+            </p>
+            <p className="text-xs text-slate-500 bg-amber-50 p-3 rounded-lg border border-amber-100">
+              An existing patient named <strong className="text-slate-900">{duplicateConfirm?.duplicatePatient?.name}</strong> 
+              {duplicateConfirm?.duplicatePatient?.phone && <> with phone number <strong className="text-slate-900">{duplicateConfirm?.duplicatePatient?.phone}</strong></>} 
+              is already registered (MRN: {duplicateConfirm?.duplicatePatient?.mrn}).
+            </p>
+            <p className="text-sm text-slate-600 font-medium">
+              Do you explicitly agree and wish to proceed with registering this patient anyway?
+            </p>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button id="ipd-duplicate-cancel-btn" variant="outline" onClick={() => setDuplicateConfirm(null)}>
+              No, Cancel
+            </Button>
+            <Button id="ipd-duplicate-confirm-btn" className="bg-amber-600 hover:bg-amber-700 text-white" onClick={() => {
+              setDuplicateConfirm(null);
+              handleQuickRegister(true);
+            }}>
+              Yes, I Agree & Proceed
             </Button>
           </DialogFooter>
         </DialogContent>
