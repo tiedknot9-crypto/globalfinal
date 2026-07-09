@@ -1679,7 +1679,7 @@ export default function OPD() {
       .sort((a, b) => new Date(b.date || b.prescription_date || 0).getTime() - new Date(a.date || a.prescription_date || 0).getTime());
 
     if (patientPrescriptions.length === 0) {
-      toast.error(`No prescription history found for ${patient.name}`);
+      toast.error('No Record found');
       return;
     }
 
