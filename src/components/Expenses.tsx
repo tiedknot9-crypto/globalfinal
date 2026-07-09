@@ -65,6 +65,8 @@ export default function Expenses() {
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any | null>(null);
   const [isEditExpenseOpen, setIsEditExpenseOpen] = useState(false);
+  const [period, setPeriod] = useState<string>('all');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
   const [users, setUsers] = useState<any[]>(() => {
@@ -210,16 +212,96 @@ export default function Expenses() {
     toast.success('Expenses exported as CSV');
   };
 
-  const filteredExpenses = expenses.filter(e => 
-    (e.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
-    (e.category?.toLowerCase() || '').includes(searchQuery.toLowerCase())
-  );
+  const getLocalDateStrFromVal = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
+      return val;
+    }
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const totalMonthly = expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const utilityBills = expenses
+  const getPeriodLabel = () => {
+    switch (period) {
+      case 'today': return 'Today';
+      case 'yesterday': return 'Yesterday';
+      case 'this-week': return 'This Week';
+      case 'this-month': return 'This Month';
+      case 'last-month': return 'Last Month';
+      case 'this-year': return 'This Year';
+      case 'custom': return 'Custom';
+      default: return 'All Time';
+    }
+  };
+
+  const filteredExpenses = expenses.filter(e => {
+    // 1. Search Query Filter
+    const matchesSearch = (e.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+                          (e.category?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    // 2. Date-wise & Period-wise Filter
+    const dateVal = e.expense_date;
+    if (!dateVal) return false;
+    const expDateStr = getLocalDateStrFromVal(dateVal);
+    if (!expDateStr) return false;
+
+    const now = new Date();
+    const todayStr = getLocalDateStrFromVal(now);
+    const [y, m] = expDateStr.split('-').map(Number);
+
+    if (period === 'today') {
+      return expDateStr === todayStr;
+    }
+
+    if (period === 'yesterday') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = getLocalDateStrFromVal(yesterday);
+      return expDateStr === yesterdayStr;
+    }
+
+    if (period === 'this-week') {
+      const startOfWeek = new Date();
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      const startOfWeekStr = getLocalDateStrFromVal(startOfWeek);
+      return expDateStr >= startOfWeekStr && expDateStr <= todayStr;
+    }
+
+    if (period === 'this-month') {
+      return m === (now.getMonth() + 1) && y === now.getFullYear();
+    }
+
+    if (period === 'last-month') {
+      const lastMonthDate = new Date();
+      lastMonthDate.setMonth(now.getMonth() - 1);
+      const lm = lastMonthDate.getMonth() + 1;
+      const ly = lastMonthDate.getFullYear();
+      return m === lm && y === ly;
+    }
+
+    if (period === 'this-year') {
+      return y === now.getFullYear();
+    }
+
+    if (period === 'custom' && dateRange.start && dateRange.end) {
+      const start = getLocalDateStrFromVal(dateRange.start);
+      const end = getLocalDateStrFromVal(dateRange.end);
+      return expDateStr >= start && expDateStr <= end;
+    }
+
+    return true; // default/all
+  });
+
+  const totalFiltered = filteredExpenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  const utilityBills = filteredExpenses
     .filter(e => e.category === 'Utilities')
     .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-  const pendingVouchers = expenses.filter(e => e.status === 'Pending').length;
+  const pendingVouchers = filteredExpenses.filter(e => e.status === 'Pending').length;
 
   if (isLoading) {
     return (
@@ -408,8 +490,8 @@ export default function Expenses() {
         <Card className="border-none shadow-sm">
           <CardContent className="p-6 flex items-center justify-between">
             <div>
-              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-1">Total Expenses (Month)</p>
-              <h3 className="text-3xl font-bold text-rose-600">{formatCurrency(totalMonthly)}</h3>
+              <p className="text-xs text-muted-foreground font-bold uppercase tracking-wider mb-1">Total Expenses ({getPeriodLabel()})</p>
+              <h3 className="text-3xl font-bold text-rose-600">{formatCurrency(totalFiltered)}</h3>
             </div>
             <div className="p-3 rounded-xl bg-rose-50 text-rose-600">
               <TrendingDown className="w-6 h-6" />
@@ -441,22 +523,55 @@ export default function Expenses() {
       </div>
 
       <Card className="border-none shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
           <CardTitle className="text-lg">Expense Log</CardTitle>
-          <div className="flex items-center gap-2">
-            <div className="relative w-64">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative w-full sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
                 placeholder="Search expense..." 
-                className="pl-10 bg-slate-50 border-none h-9" 
+                className="pl-10 bg-slate-50 border-none h-9 w-full" 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Button variant="outline" size="sm" className="h-9">
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-            </Button>
+            
+            <Select value={period} onValueChange={setPeriod}>
+              <SelectTrigger className="w-[150px] h-9 bg-slate-50 border-none rounded-md font-medium text-slate-700">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-3.5 h-3.5 text-medical-blue shrink-0" />
+                  <SelectValue placeholder="Period" />
+                </div>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="yesterday">Yesterday</SelectItem>
+                <SelectItem value="this-week">This Week</SelectItem>
+                <SelectItem value="this-month">This Month</SelectItem>
+                <SelectItem value="last-month">Last Month</SelectItem>
+                <SelectItem value="this-year">This Year</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {period === 'custom' && (
+              <div className="flex items-center gap-1 bg-slate-50 border border-slate-100 p-1 rounded-md text-slate-800">
+                <Input 
+                  type="date" 
+                  className="h-7 w-28 text-[11px] border-none font-medium bg-transparent focus-visible:ring-0" 
+                  value={dateRange.start} 
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                />
+                <span className="text-slate-400 text-xs px-0.5">-</span>
+                <Input 
+                  type="date" 
+                  className="h-7 w-28 text-[11px] border-none font-medium bg-transparent focus-visible:ring-0" 
+                  value={dateRange.end} 
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                />
+              </div>
+            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -473,50 +588,58 @@ export default function Expenses() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExpenses.map((expense) => (
-                  <TableRow key={expense.id} className="border-slate-50">
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(expense.expense_date)}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <Badge variant="outline" className="text-[10px] font-bold uppercase">{expense.category}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm font-medium whitespace-nowrap">{expense.description}</TableCell>
-                    <TableCell className="font-bold whitespace-nowrap">{formatCurrency(expense.amount)}</TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <Badge variant="secondary" className={`border-none ${
-                        expense.status === 'Paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
-                      }`}>
-                        {expense.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
-                      <div className="flex justify-end gap-2 items-center">
-                        {canModify(expense) ? (
-                          <>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 text-medical-blue" onClick={() => {
-                              setEditingExpense({...expense});
-                              setIsEditExpenseOpen(true);
-                            }}>
-                              <Edit className="w-4 h-4" />
-                            </Button>
-                            {(() => {
-                              const r = (currentUser?.role || '').toUpperCase();
-                              return !(r === 'RECEPTIONIST' || r === 'RECEPTION' || r === 'FRONT_DESK' || r === 'DOCTOR' || r === 'SURGEON' || r === 'ACCOUNTANT' || r === 'ACCOUNTS');
-                            })() && (
-                              <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => handleDeleteExpense(expense.id)}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
-                          </>
-                        ) : (
-                          <Badge variant="secondary" className="text-[10px] text-slate-400 bg-slate-100 font-bold hover:bg-slate-100 select-none px-2 py-0.5">Admin Locked</Badge>
-                        )}
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </div>
+                {filteredExpenses.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="text-center py-10 text-slate-400 font-medium">
+                      No matching expense records found for the selected period.
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  filteredExpenses.map((expense) => (
+                    <TableRow key={expense.id} className="border-slate-50">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{formatDate(expense.expense_date)}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <Badge variant="outline" className="text-[10px] font-bold uppercase">{expense.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm font-medium whitespace-nowrap">{expense.description}</TableCell>
+                      <TableCell className="font-bold whitespace-nowrap">{formatCurrency(expense.amount)}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <Badge variant="secondary" className={`border-none ${
+                          expense.status === 'Paid' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                        }`}>
+                          {expense.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <div className="flex justify-end gap-2 items-center">
+                          {canModify(expense) ? (
+                            <>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-medical-blue" onClick={() => {
+                                setEditingExpense({...expense});
+                                setIsEditExpenseOpen(true);
+                              }}>
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              {(() => {
+                                const r = (currentUser?.role || '').toUpperCase();
+                                return !(r === 'RECEPTIONIST' || r === 'RECEPTION' || r === 'FRONT_DESK' || r === 'DOCTOR' || r === 'SURGEON' || r === 'ACCOUNTANT' || r === 'ACCOUNTS');
+                              })() && (
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => handleDeleteExpense(expense.id)}>
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </>
+                          ) : (
+                            <Badge variant="secondary" className="text-[10px] text-slate-400 bg-slate-100 font-bold hover:bg-slate-100 select-none px-2 py-0.5">Admin Locked</Badge>
+                          )}
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>
