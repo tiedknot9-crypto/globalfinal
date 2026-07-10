@@ -785,6 +785,7 @@ export default function Billing() {
 
   const [showConPatientResults, setShowConPatientResults] = useState<boolean>(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
+  const [filterPaymentMethod, setFilterPaymentMethod] = useState<string>('all');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [isInvoiceOpen, setIsInvoiceOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -3235,6 +3236,23 @@ export default function Billing() {
                 </SelectContent>
               </Select>
 
+              <Select value={filterPaymentMethod} onValueChange={setFilterPaymentMethod}>
+                <SelectTrigger className="w-[145px] h-9 bg-white border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-3.5 h-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="Payment Mode" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Modes</SelectItem>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="upi">UPI</SelectItem>
+                  <SelectItem value="card">Card</SelectItem>
+                  <SelectItem value="insurance">Insurance</SelectItem>
+                  <SelectItem value="na">N/A / Others</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Date Filters */}
               <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1 h-9">
                 <span className="text-[9px] uppercase font-bold text-muted-foreground px-1">From:</span>
@@ -3285,7 +3303,7 @@ export default function Billing() {
                 </TableHeader>
                 <TableBody>
                   {(() => {
-                    const displayedBills = filterCategory === 'expenses'
+                    const baseBills = filterCategory === 'expenses'
                       ? expenses
                           .filter(exp => {
                             const matchesSearch = 
@@ -3319,6 +3337,17 @@ export default function Billing() {
                             rawExpense: exp
                           }))
                       : filteredBills;
+
+                    const displayedBills = baseBills.filter(bill => {
+                      if (filterPaymentMethod === 'all') return true;
+                      const method = (bill.payment_method || '').toLowerCase();
+                      if (filterPaymentMethod === 'cash') return method === 'cash';
+                      if (filterPaymentMethod === 'upi') return method === 'upi';
+                      if (filterPaymentMethod === 'card') return method === 'card';
+                      if (filterPaymentMethod === 'insurance') return method === 'insurance';
+                      if (filterPaymentMethod === 'na') return method === 'n/a' || method === 'na' || !method;
+                      return false;
+                    });
 
                     return displayedBills.map((bill) => {
                       const roleUpper = (currentUser?.role || '').toUpperCase();
