@@ -217,8 +217,8 @@ export default function Expenses() {
 
   const getLocalDateStrFromVal = (val: any): string => {
     if (!val) return '';
-    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) {
-      return val;
+    if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}/.test(val)) {
+      return val.substring(0, 10);
     }
     const d = new Date(val);
     if (isNaN(d.getTime())) return '';
@@ -248,7 +248,7 @@ export default function Expenses() {
     if (!matchesSearch) return false;
 
     // 2. Date-wise & Period-wise Filter
-    const dateVal = e.expense_date;
+    const dateVal = e.expense_date || e.created_at;
     if (!dateVal) return false;
     const expDateStr = getLocalDateStrFromVal(dateVal);
     if (!expDateStr) return false;
@@ -272,7 +272,10 @@ export default function Expenses() {
       const startOfWeek = new Date();
       startOfWeek.setDate(now.getDate() - now.getDay());
       const startOfWeekStr = getLocalDateStrFromVal(startOfWeek);
-      return expDateStr >= startOfWeekStr && expDateStr <= todayStr;
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      const endOfWeekStr = getLocalDateStrFromVal(endOfWeek);
+      return expDateStr >= startOfWeekStr && expDateStr <= endOfWeekStr;
     }
 
     if (period === 'this-month') {
@@ -540,11 +543,9 @@ export default function Expenses() {
             </div>
             
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[150px] h-9 bg-slate-50 border-none rounded-md font-medium text-slate-700">
-                <div className="flex items-center gap-2">
-                  <Filter className="w-3.5 h-3.5 text-medical-blue shrink-0" />
-                  <SelectValue placeholder="Period" />
-                </div>
+              <SelectTrigger className="w-[150px] h-9 bg-slate-50 border-none rounded-md font-medium text-slate-700 flex items-center gap-2">
+                <Filter className="w-3.5 h-3.5 text-medical-blue shrink-0" />
+                <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Time</SelectItem>

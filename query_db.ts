@@ -8,21 +8,20 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_q0e5J5
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  console.log('Querying expenses matching description chemical or amount 5000...');
+  console.log('Querying profiles matching c8236da6-a7a7-4bd3-b895-8485efc2df10...');
   const { data, error } = await supabase
-    .from('expenses')
+    .from('profiles')
     .select('*');
   
   if (error) {
-    console.error('Error fetching expenses:', error);
+    console.error('Error fetching profiles:', error);
   } else {
-    const matched = data?.filter((e: any) => 
-      (e.description && e.description.toLowerCase().includes('chemical')) || 
-      (e.category && e.category.toLowerCase().includes('chemical')) ||
-      e.amount === 5000
-    );
-    console.log('Matched', matched?.length, 'expenses.');
-    console.log(JSON.stringify(matched, null, 2));
+    console.log('Total profiles:', data?.length);
+    const specific = data?.find((p: any) => p.id === 'c8236da6-a7a7-4bd3-b895-8485efc2df10');
+    console.log('Specific profile:', JSON.stringify(specific, null, 2));
+    console.log('Roles list in profiles:');
+    const roles = Array.from(new Set(data?.map((p: any) => p.role)));
+    console.log(roles);
   }
 }
 
