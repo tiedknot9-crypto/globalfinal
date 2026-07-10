@@ -192,17 +192,17 @@ export function OPDCollectionTab({
     return Object.values(docs);
   }, [filteredApts]);
 
-  // Date-wise list of transactions (sorted by date descending and time-wise ascending)
+  // Date-wise list of transactions (sorted by date descending and time descending)
   const detailedTransactions = useMemo(() => {
     return [...filteredApts].sort((a, b) => {
-      const dateA = a.dateStr || '';
-      const dateB = b.dateStr || '';
+      const dateA = (a.dateStr || '').split('T')[0];
+      const dateB = (b.dateStr || '').split('T')[0];
       if (dateA !== dateB) {
         return dateB.localeCompare(dateA);
       }
       const timeA = parseTimeToMinutes(a.appointment_time || a.time);
       const timeB = parseTimeToMinutes(b.appointment_time || b.time);
-      return timeA - timeB;
+      return timeB - timeA;
     });
   }, [filteredApts]);
 

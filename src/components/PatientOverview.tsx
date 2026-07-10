@@ -1031,14 +1031,14 @@ View full details at: ${shareUrl}
   const patientAppointments = useMemo(() => {
     const filtered = appointments.filter(a => isPatientIdMatch(a.patient_id, selectedPatient?.id) || isPatientIdMatch(a.patientId, selectedPatient?.id));
     return [...filtered].sort((a, b) => {
-      const dateA = a.appointment_date || a.date || '';
-      const dateB = b.appointment_date || b.date || '';
+      const dateA = (a.appointment_date || a.date || '').split('T')[0];
+      const dateB = (b.appointment_date || b.date || '').split('T')[0];
       if (dateA !== dateB) {
         return dateB.localeCompare(dateA);
       }
       const timeA = parseTimeToMinutes(a.appointment_time || a.time);
       const timeB = parseTimeToMinutes(b.appointment_time || b.time);
-      return timeA - timeB;
+      return timeB - timeA;
     });
   }, [appointments, selectedPatient]);
   const patientBills = useMemo(() => billing.filter(b => isPatientIdMatch(b.patient_id, selectedPatient?.id) || isPatientIdMatch(b.patientId, selectedPatient?.id)), [billing, selectedPatient]);

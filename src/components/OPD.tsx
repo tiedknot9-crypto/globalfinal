@@ -2826,16 +2826,16 @@ export default function OPD() {
                 <TableBody>
                   {[...appointments]
                     .sort((a, b) => {
-                      const dateA = a.appointment_date || a.date || '';
-                      const dateB = b.appointment_date || b.date || '';
+                      const dateA = (a.appointment_date || a.date || '').split('T')[0];
+                      const dateB = (b.appointment_date || b.date || '').split('T')[0];
                       if (dateA !== dateB) {
                         // Latest date first (descending)
                         return dateB.localeCompare(dateA);
                       }
-                      // Sort by time (ascending)
+                      // Sort by time (descending) - latest time first
                       const timeA = parseTimeToMinutes(a.appointment_time || a.time);
                       const timeB = parseTimeToMinutes(b.appointment_time || b.time);
-                      return timeA - timeB;
+                      return timeB - timeA;
                     })
                     .filter(apt => {
                       const aptDate = typeof apt.appointment_date === 'string' ? apt.appointment_date : new Date(apt.appointment_date).toLocaleDateString('sv').split(' ')[0];
