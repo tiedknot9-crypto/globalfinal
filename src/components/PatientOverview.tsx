@@ -56,9 +56,41 @@ const isPatientIdMatch = (id1: any, id2: any): boolean => {
     return false;
   }
 };
+
+function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
+  const cleanStr = timeStr.trim().toUpperCase();
+  
+  // Try 12-hour AM/PM first: e.g. "10:30 AM" or "2:30 PM" or "12:15 AM"
+  const ampmMatch = cleanStr.match(/^(\d+):(\d+)\s*(AM|PM)?/);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm === 'PM' && hours < 12) {
+        hours += 12;
+      } else if (ampm === 'AM' && hours === 12) {
+        hours = 0;
+      }
+    }
+    return hours * 60 + minutes;
+  }
+  
+  // Try just "HH:MM" 24-hour format
+  const hmMatch = cleanStr.match(/^(\d+):(\d+)/);
+  if (hmMatch) {
+    const hours = parseInt(hmMatch[1], 10);
+    const minutes = parseInt(hmMatch[2], 10);
+    return hours * 60 + minutes;
+  }
+  
+  return 0;
+}
 import { getPathologyReportHtml, getRadiologyReportHtml, getMaternityReportHtml } from '@/lib/reportPrint';
 import { getPatientReportHtml } from '@/lib/patientReportPrint';
 import { normalizeRole } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   Dialog, 
   DialogContent, 
@@ -83,6 +115,17 @@ export default function PatientOverview({ userRole }: { userRole?: string }) {
   const [selectedPatient, setSelectedPatient] = useState<any>(null);
   const [patients, setPatients] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [activeCategory, setActiveCategory] = useState<'All' | 'OPD/IPD' | 'Quick' | 'Quick-Lab' | 'Quick-Pharmacy'>('All');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState<{url: string, name: string} | null>(null);
@@ -937,7 +980,7 @@ View full details at: ${shareUrl}
     setLoading(false);
   };
 
-  const handleDeletePatient = async () => {
+  const handleDeletePatient = () => {
     if (!selectedPatient) return;
     
     const roleUpper = (userRole || '').toUpperCase();
@@ -946,33 +989,36 @@ View full details at: ${shareUrl}
       return;
     }
     
-    if (!window.confirm(`Are you sure you want to PERMANENTLY delete ${selectedPatient.name} and all associated records? This action cannot be undone.`)) {
-      return;
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Patient Profile",
+      description: `Are you sure you want to PERMANENTLY delete ${selectedPatient.name} and all associated records? This action cannot be undone.`,
+      onConfirm: async () => {
+        try {
+          // Sync with Supabase if connected
+          if (selectedPatient.supabase_id && import.meta.env.VITE_SUPABASE_URL) {
+            const { supabaseService } = await import('../services/supabaseService');
+            await supabaseService.deletePatient(selectedPatient.supabase_id);
+          }
 
-    try {
-      // Sync with Supabase if connected
-      if (selectedPatient.supabase_id && import.meta.env.VITE_SUPABASE_URL) {
-        const { supabaseService } = await import('../services/supabaseService');
-        await supabaseService.deletePatient(selectedPatient.supabase_id);
+          const updatedPatients = patients.filter((p: any) => p.id !== selectedPatient.id);
+          setPatients(updatedPatients);
+          storage.set(STORAGE_KEYS.PATIENTS, updatedPatients);
+          
+          // Clear URL params and selection
+          setSearchParams({});
+          setSelectedPatient(null);
+          
+          toast.success('Patient record deleted successfully');
+          
+          // Dispatch storage event to update other components
+          window.dispatchEvent(new Event('storage'));
+        } catch (error) {
+          console.error('Delete error:', error);
+          toast.error('Failed to delete patient record');
+        }
       }
-
-      const updatedPatients = patients.filter((p: any) => p.id !== selectedPatient.id);
-      setPatients(updatedPatients);
-      storage.set(STORAGE_KEYS.PATIENTS, updatedPatients);
-      
-      // Clear URL params and selection
-      setSearchParams({});
-      setSelectedPatient(null);
-      
-      toast.success('Patient record deleted successfully');
-      
-      // Dispatch storage event to update other components
-      window.dispatchEvent(new Event('storage'));
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast.error('Failed to delete patient record');
-    }
+    });
   };
 
   const calculateDues = (patientId: string) => {
@@ -982,7 +1028,19 @@ View full details at: ${shareUrl}
     return total - paid;
   };
 
-  const patientAppointments = useMemo(() => appointments.filter(a => isPatientIdMatch(a.patient_id, selectedPatient?.id) || isPatientIdMatch(a.patientId, selectedPatient?.id)), [appointments, selectedPatient]);
+  const patientAppointments = useMemo(() => {
+    const filtered = appointments.filter(a => isPatientIdMatch(a.patient_id, selectedPatient?.id) || isPatientIdMatch(a.patientId, selectedPatient?.id));
+    return [...filtered].sort((a, b) => {
+      const dateA = a.appointment_date || a.date || '';
+      const dateB = b.appointment_date || b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      const timeA = parseTimeToMinutes(a.appointment_time || a.time);
+      const timeB = parseTimeToMinutes(b.appointment_time || b.time);
+      return timeA - timeB;
+    });
+  }, [appointments, selectedPatient]);
   const patientBills = useMemo(() => billing.filter(b => isPatientIdMatch(b.patient_id, selectedPatient?.id) || isPatientIdMatch(b.patientId, selectedPatient?.id)), [billing, selectedPatient]);
   const patientClaims = useMemo(() => insuranceClaims.filter(c => isPatientIdMatch(c.patient_id, selectedPatient?.id) || isPatientIdMatch(c.patientId, selectedPatient?.id)), [insuranceClaims, selectedPatient]);
   const currentBed = useMemo(() => beds.find(b => isPatientIdMatch(b.patient_id, selectedPatient?.id) || isPatientIdMatch(b.patientId, selectedPatient?.id)), [beds, selectedPatient]);
@@ -2249,6 +2307,13 @@ View full details at: ${shareUrl}
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

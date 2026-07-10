@@ -9,6 +9,37 @@ import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '@
 import { Badge } from '@/components/ui/badge';
 import { Calendar, User, Users, CreditCard, Filter, ArrowUpRight, Check, X, Printer, IndianRupee } from 'lucide-react';
 
+function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
+  const cleanStr = timeStr.trim().toUpperCase();
+  
+  // Try 12-hour AM/PM first: e.g. "10:30 AM" or "2:30 PM" or "12:15 AM"
+  const ampmMatch = cleanStr.match(/^(\d+):(\d+)\s*(AM|PM)?/);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm === 'PM' && hours < 12) {
+        hours += 12;
+      } else if (ampm === 'AM' && hours === 12) {
+        hours = 0;
+      }
+    }
+    return hours * 60 + minutes;
+  }
+  
+  // Try just "HH:MM" 24-hour format
+  const hmMatch = cleanStr.match(/^(\d+):(\d+)/);
+  if (hmMatch) {
+    const hours = parseInt(hmMatch[1], 10);
+    const minutes = parseInt(hmMatch[2], 10);
+    return hours * 60 + minutes;
+  }
+  
+  return 0;
+}
+
 interface OPDCollectionTabProps {
   bills: any[];
   appointments: any[];
@@ -161,9 +192,18 @@ export function OPDCollectionTab({
     return Object.values(docs);
   }, [filteredApts]);
 
-  // Date-wise list of transactions (sorted by date descending)
+  // Date-wise list of transactions (sorted by date descending and time-wise ascending)
   const detailedTransactions = useMemo(() => {
-    return [...filteredApts].sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+    return [...filteredApts].sort((a, b) => {
+      const dateA = a.dateStr || '';
+      const dateB = b.dateStr || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      const timeA = parseTimeToMinutes(a.appointment_time || a.time);
+      const timeB = parseTimeToMinutes(b.appointment_time || b.time);
+      return timeA - timeB;
+    });
   }, [filteredApts]);
 
   const activeDoctors = useMemo(() => {

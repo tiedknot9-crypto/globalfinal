@@ -33,6 +33,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { toast } from 'sonner';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   Dialog, 
   DialogContent, 
@@ -60,6 +61,17 @@ export default function Insurance() {
   });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [isNewClaimOpen, setIsNewClaimOpen] = useState(false);
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [showPatientResults, setShowPatientResults] = useState(false);
@@ -127,16 +139,23 @@ export default function Insurance() {
     }
   };
 
-  const handleDeleteClaim = async (id: string) => {
-    if (confirm('Are you sure you want to delete this insurance claim?')) {
-      const result = await supabaseService.deleteInsuranceClaim(id);
-      if (result) {
-        toast.success('Claim removed');
-        fetchData();
-      } else {
-        toast.error('Failed to delete claim');
+  const handleDeleteClaim = (id: string) => {
+    const claim = insuranceRecords.find(c => c.id === id);
+    const patient = patients.find(p => p.id === claim?.patientId);
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Insurance Claim",
+      description: `Are you sure you want to delete the insurance claim for patient "${patient?.name || 'this patient'}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        const result = await supabaseService.deleteInsuranceClaim(id);
+        if (result) {
+          toast.success('Claim removed');
+          fetchData();
+        } else {
+          toast.error('Failed to delete claim');
+        }
       }
-    }
+    });
   };
 
   const printDischargeSummary = (record: any) => {
@@ -528,6 +547,13 @@ export default function Insurance() {
           </div>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

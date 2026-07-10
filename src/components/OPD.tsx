@@ -61,6 +61,38 @@ import { supabaseService, toDeterministicUuid, isUuid } from '@/services/supabas
 import { useDataSync } from '@/hooks/useDataSync';
 import { canUserEditRecord, canUserEditClinicalData, canUserManageBilling, normalizeRole, canUserModifyRecord } from '@/utils/rbac';
 import { getPrescriptionPrintHtml } from '@/lib/prescriptionPrint';
+import { ConfirmDialog } from './ConfirmDialog';
+
+function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
+  const cleanStr = timeStr.trim().toUpperCase();
+  
+  // Try 12-hour AM/PM first: e.g. "10:30 AM" or "2:30 PM" or "12:15 AM"
+  const ampmMatch = cleanStr.match(/^(\d+):(\d+)\s*(AM|PM)?/);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm === 'PM' && hours < 12) {
+        hours += 12;
+      } else if (ampm === 'AM' && hours === 12) {
+        hours = 0;
+      }
+    }
+    return hours * 60 + minutes;
+  }
+  
+  // Try just "HH:MM" 24-hour format
+  const hmMatch = cleanStr.match(/^(\d+):(\d+)/);
+  if (hmMatch) {
+    const hours = parseInt(hmMatch[1], 10);
+    const minutes = parseInt(hmMatch[2], 10);
+    return hours * 60 + minutes;
+  }
+  
+  return 0;
+}
 
 const isPatientIdMatch = (id1: any, id2: any): boolean => {
   if (!id1 || !id2) return false;
@@ -175,6 +207,17 @@ export default function OPD() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [patients, setPatients] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [users, setUsers] = useState<any[]>(() => storage.get(STORAGE_KEYS.USERS, MOCK_USERS));
   const [newPatient, setNewPatient] = useState({ 
     name: '', 
@@ -1427,20 +1470,25 @@ export default function OPD() {
     printWindow.document.close();
   };
 
-  const handleDeletePatient = async (id: string) => {
+  const handleDeletePatient = (id: string) => {
     const patientToDelete = patients.find(p => p.id === id);
-    if (!window.confirm(`Are you sure you want to delete ${patientToDelete?.name}?`)) return;
-
-    const success = await supabaseService.deletePatient(id);
-    if (success) {
-      const updatedList = patients.filter(p => p.id !== id);
-      setPatients(updatedList);
-      storage.set(STORAGE_KEYS.PATIENTS, updatedList);
-      window.dispatchEvent(new Event('storage'));
-      toast.success('Patient record removed');
-    } else {
-      toast.error('Failed to delete patient');
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Patient",
+      description: `Are you sure you want to delete ${patientToDelete?.name}? This action cannot be undone.`,
+      onConfirm: async () => {
+        const success = await supabaseService.deletePatient(id);
+        if (success) {
+          const updatedList = patients.filter(p => p.id !== id);
+          setPatients(updatedList);
+          storage.set(STORAGE_KEYS.PATIENTS, updatedList);
+          window.dispatchEvent(new Event('storage'));
+          toast.success('Patient record removed');
+        } else {
+          toast.error('Failed to delete patient');
+        }
+      }
+    });
   };
 
   const handlePayAppointment = async (id: string) => {
@@ -1545,88 +1593,99 @@ export default function OPD() {
     }
   };
 
-  const handleDeleteAppointment = async (id: string) => {
+  const handleDeleteAppointment = (id: string) => {
     const aptToDelete = appointments.find(a => a.id === id);
-    if (!window.confirm(`Are you sure you want to permanently delete appointment for ${aptToDelete?.patientName || 'this patient'}?`)) return;
-
-    const updated = appointments.filter(a => a.id !== id);
-    setAppointments(updated);
-    storage.set(STORAGE_KEYS.APPOINTMENTS, updated);
-    
-    try {
-      if (id && !id.startsWith('apt-') && !id.startsWith('off-')) {
-        await supabaseService.deleteAppointment(id);
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Appointment",
+      description: `Are you sure you want to permanently delete appointment for ${aptToDelete?.patientName || 'this patient'}? This action cannot be undone.`,
+      onConfirm: async () => {
+        const updated = appointments.filter(a => a.id !== id);
+        setAppointments(updated);
+        storage.set(STORAGE_KEYS.APPOINTMENTS, updated);
+        
+        try {
+          if (id && !id.startsWith('apt-') && !id.startsWith('off-')) {
+            await supabaseService.deleteAppointment(id);
+          }
+        } catch (e) {
+          console.warn('Supabase delete appointment error:', e);
+        }
+        
+        window.dispatchEvent(new Event('storage'));
+        window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
+          detail: { table: 'appointments', action: 'delete' } 
+        }));
+        toast.success('Appointment deleted successfully');
       }
-    } catch (e) {
-      console.warn('Supabase delete appointment error:', e);
-    }
-    
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
-      detail: { table: 'appointments', action: 'delete' } 
-    }));
-    toast.success('Appointment deleted successfully');
+    });
   };
 
-  const handleRefundAppointment = async (id: string) => {
-    if (!window.confirm("Are you sure you want to refund this consultation fee? This will mark the transaction as Refunded.")) return;
-    const refundBy = currentUser?.name || 'Staff';
-    const success = await supabaseService.updateAppointment(id, { 
-      payment_status: 'Refunded',
-      refund_given_by: refundBy
-    });
-    if (success) {
-      const nextApts = appointments.map(a => a.id === id ? { ...a, payment_status: 'Refunded', refund_given_by: refundBy, refundGivenBy: refundBy } : a);
-      setAppointments(nextApts);
-      
-      try {
-        const apt = appointments.find(a => a.id === id);
-        if (apt) {
-          const patientId = apt.patientId || apt.patient_id;
-          if (patientId) {
-            const invoices = await supabaseService.getInvoices();
-            const opdInvoices = invoices && invoices.length > 0 ? invoices.filter((inv: any) => {
-              const isMatchPatient = (inv.patient_id === patientId || inv.patientId === patientId);
-              const isOPD = inv.type === 'OPD' || 
-                            inv.invoice_number?.startsWith('INV-REG') || 
-                            inv.invoice_number?.startsWith('INV-OPD') ||
-                            inv.invoice_number?.includes('REG') ||
-                            inv.invoice_number?.includes('OPD');
-              return isMatchPatient && isOPD;
-            }) : [];
+  const handleRefundAppointment = (id: string) => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Refund Consultation Fee",
+      description: "Are you sure you want to refund this consultation fee? This will mark the transaction as Refunded.",
+      onConfirm: async () => {
+        const refundBy = currentUser?.name || 'Staff';
+        const success = await supabaseService.updateAppointment(id, { 
+          payment_status: 'Refunded',
+          refund_given_by: refundBy
+        });
+        if (success) {
+          const nextApts = appointments.map(a => a.id === id ? { ...a, payment_status: 'Refunded', refund_given_by: refundBy, refundGivenBy: refundBy } : a);
+          setAppointments(nextApts);
+          
+          try {
+            const apt = appointments.find(a => a.id === id);
+            if (apt) {
+              const patientId = apt.patientId || apt.patient_id;
+              if (patientId) {
+                const invoices = await supabaseService.getInvoices();
+                const opdInvoices = invoices && invoices.length > 0 ? invoices.filter((inv: any) => {
+                  const isMatchPatient = (inv.patient_id === patientId || inv.patientId === patientId);
+                  const isOPD = inv.type === 'OPD' || 
+                                inv.invoice_number?.startsWith('INV-REG') || 
+                                inv.invoice_number?.startsWith('INV-OPD') ||
+                                inv.invoice_number?.includes('REG') ||
+                                inv.invoice_number?.includes('OPD');
+                  return isMatchPatient && isOPD;
+                }) : [];
 
-            const currentBills = storage.get(STORAGE_KEYS.BILLING, []);
-            let updatedBills = [...currentBills];
+                const currentBills = storage.get(STORAGE_KEYS.BILLING, []);
+                let updatedBills = [...currentBills];
 
-            if (opdInvoices.length > 0) {
-              for (const inv of opdInvoices) {
-                const updatedInv = { ...inv, status: 'Refunded', payment_status: 'Refunded' };
-                await supabaseService.updateInvoice(inv.id, updatedInv);
-                updatedBills = updatedBills.map((b: any) => b.id === inv.id ? updatedInv : b);
+                if (opdInvoices.length > 0) {
+                  for (const inv of opdInvoices) {
+                    const updatedInv = { ...inv, status: 'Refunded', payment_status: 'Refunded' };
+                    await supabaseService.updateInvoice(inv.id, updatedInv);
+                    updatedBills = updatedBills.map((b: any) => b.id === inv.id ? updatedInv : b);
+                  }
+                }
+                
+                // Update local storage cache to keep everything in sync
+                storage.set(STORAGE_KEYS.APPOINTMENTS, nextApts);
+                storage.set(STORAGE_KEYS.BILLING, updatedBills);
+
+                window.dispatchEvent(new Event('storage'));
+                window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
+                  detail: { table: 'invoices', action: 'update' } 
+                }));
+                window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
+                  detail: { table: 'appointments', action: 'update' } 
+                }));
               }
             }
-            
-            // Update local storage cache to keep everything in sync
-            storage.set(STORAGE_KEYS.APPOINTMENTS, nextApts);
-            storage.set(STORAGE_KEYS.BILLING, updatedBills);
-
-            window.dispatchEvent(new Event('storage'));
-            window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
-              detail: { table: 'invoices', action: 'update' } 
-            }));
-            window.dispatchEvent(new CustomEvent('supabase-data-sync', { 
-              detail: { table: 'appointments', action: 'update' } 
-            }));
+          } catch (err) {
+            console.error('Error syncing invoice refund:', err);
           }
-        }
-      } catch (err) {
-        console.error('Error syncing invoice refund:', err);
-      }
 
-      toast.success('Consultation fee refunded successfully');
-    } else {
-      toast.error('Failed to update refund status');
-    }
+          toast.success('Consultation fee refunded successfully');
+        } else {
+          toast.error('Failed to update refund status');
+        }
+      }
+    });
   };
 
   const printAppointmentToken = (apt: any) => {
@@ -2765,7 +2824,19 @@ export default function OPD() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {appointments
+                  {[...appointments]
+                    .sort((a, b) => {
+                      const dateA = a.appointment_date || a.date || '';
+                      const dateB = b.appointment_date || b.date || '';
+                      if (dateA !== dateB) {
+                        // Latest date first (descending)
+                        return dateB.localeCompare(dateA);
+                      }
+                      // Sort by time (ascending)
+                      const timeA = parseTimeToMinutes(a.appointment_time || a.time);
+                      const timeB = parseTimeToMinutes(b.appointment_time || b.time);
+                      return timeA - timeB;
+                    })
                     .filter(apt => {
                       const aptDate = typeof apt.appointment_date === 'string' ? apt.appointment_date : new Date(apt.appointment_date).toLocaleDateString('sv').split(' ')[0];
                       
@@ -3604,6 +3675,13 @@ export default function OPD() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

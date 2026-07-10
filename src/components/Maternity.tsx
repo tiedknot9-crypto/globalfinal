@@ -51,6 +51,7 @@ import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { canUserModifyRecord } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function Maternity() {
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
@@ -71,6 +72,17 @@ export default function Maternity() {
   const [staff, setStaff] = useState<any[]>([]);
   const [editingDelivery, setEditingDelivery] = useState<any | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   const [isAddDeliveryOpen, setIsAddDeliveryOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -335,7 +347,7 @@ export default function Maternity() {
     }
   };
 
-  const handleDeleteDelivery = async (id: string) => {
+  const handleDeleteDelivery = (id: string) => {
     if (isDeleteForbidden) {
       toast.error('Deletion of delivery records is restricted for Front Office, Doctor, and Accountant roles.');
       return;
@@ -345,15 +357,20 @@ export default function Maternity() {
       toast.error("Access Denied: This delivery record was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    if (confirm('Are you sure you want to delete this delivery record?')) {
-      const result = await supabaseService.deleteDelivery(id);
-      if (result) {
-        toast.success('Delivery record deleted successfully');
-        fetchData();
-      } else {
-        toast.error('Failed to delete delivery record');
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Delivery Record",
+      description: "Are you sure you want to delete this delivery record? This action cannot be undone.",
+      onConfirm: async () => {
+        const result = await supabaseService.deleteDelivery(id);
+        if (result) {
+          toast.success('Delivery record deleted successfully');
+          fetchData();
+        } else {
+          toast.error('Failed to delete delivery record');
+        }
       }
-    }
+    });
   };
 
   const handleStartEdit = (d: any) => {
@@ -750,12 +767,17 @@ export default function Maternity() {
                         variant="ghost" 
                         size="icon" 
                         className="h-8 w-8 text-rose-500 hover:text-rose-600 hover:bg-rose-50" 
-                        onClick={async () => {
-                          if (confirm('Are you sure you want to delete this newborn record?')) {
-                            await supabaseService.deleteNewborn(baby.id);
-                            toast.success('Newborn record deleted');
-                            fetchData();
-                          }
+                        onClick={() => {
+                          setDeleteConfirm({
+                            isOpen: true,
+                            title: "Delete Newborn Record",
+                            description: "Are you sure you want to delete this newborn record? This action cannot be undone.",
+                            onConfirm: async () => {
+                              await supabaseService.deleteNewborn(baby.id);
+                              toast.success('Newborn record deleted');
+                              fetchData();
+                            }
+                          });
                         }}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -995,6 +1017,13 @@ export default function Maternity() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

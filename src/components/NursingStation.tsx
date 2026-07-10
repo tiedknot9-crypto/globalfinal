@@ -31,6 +31,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function NursingStation() {
   const [tasks, setTasks] = useState<any[]>([]);
@@ -39,6 +40,17 @@ export default function NursingStation() {
   const [shifts, setShifts] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [isVitalsDialogOpen, setIsVitalsDialogOpen] = useState(false);
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const [isNurseNoteOpen, setIsNurseNoteOpen] = useState(false);
@@ -95,14 +107,22 @@ export default function NursingStation() {
     }
   };
 
-  const handleDeleteTask = async (id: string) => {
-    const result = await supabaseService.deleteNursingTask(id);
-    if (result) {
-      toast.success('Task removed');
-      fetchData();
-    } else {
-      toast.error('Failed to delete task');
-    }
+  const handleDeleteTask = (id: string) => {
+    const taskToDelete = tasks.find(t => t.id === id);
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Nursing Task",
+      description: `Are you sure you want to delete task "${taskToDelete?.description || 'this task'}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        const result = await supabaseService.deleteNursingTask(id);
+        if (result) {
+          toast.success('Task removed');
+          fetchData();
+        } else {
+          toast.error('Failed to delete task');
+        }
+      }
+    });
   };
 
   const handleUpdateVitals = async () => {
@@ -591,6 +611,13 @@ export default function NursingStation() {
           </CardContent>
         </Card>
       </div>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

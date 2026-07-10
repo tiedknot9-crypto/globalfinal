@@ -33,6 +33,7 @@ import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { canUserModifyRecord } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function OTManagement() {
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
@@ -48,6 +49,17 @@ export default function OTManagement() {
   const [selectedRecord, setSelectedRecord] = useState<OperationRecord | null>(null);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [patientSearchTerm, setPatientSearchTerm] = useState('');
   const [showPatientResults, setShowPatientResults] = useState(false);
   const [newOp, setNewOp] = useState({ patientId: '', surgeonId: '', theatreId: '', operationName: '', date: '', time: '' });
@@ -144,7 +156,7 @@ export default function OTManagement() {
     setIsUploadDialogOpen(false);
   };
 
-  const handleDeleteRecord = async (id: string) => {
+  const handleDeleteRecord = (id: string) => {
     if (isDeleteForbidden) {
       toast.error('Deletion of OT scheduling is restricted for Front Office, Doctor, and Accountant roles.');
       return;
@@ -154,15 +166,20 @@ export default function OTManagement() {
       toast.error("Access Denied: This OT scheduling record was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    if (confirm('Are you sure you want to delete this OT record?')) {
-      const result = await supabaseService.deleteOTRecord(id);
-      if (result) {
-        toast.success('Operation record removed');
-        fetchData();
-      } else {
-        toast.error('Failed to delete OT record');
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Operation Record",
+      description: `Are you sure you want to delete the operation record for "${record?.operationName || 'this record'}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        const result = await supabaseService.deleteOTRecord(id);
+        if (result) {
+          toast.success('Operation record removed');
+          fetchData();
+        } else {
+          toast.error('Failed to delete OT record');
+        }
       }
-    }
+    });
   };
 
   const handleExportOT = () => {
@@ -707,6 +724,13 @@ export default function OTManagement() {
           </form>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

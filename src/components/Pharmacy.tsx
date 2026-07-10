@@ -48,6 +48,7 @@ import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { canUserModifyRecord, normalizeRole } from '@/utils/rbac';
 import { toast } from 'sonner';
+import { ConfirmDialog } from './ConfirmDialog';
 import { Link } from 'react-router-dom';
 import { generatePharmacyInvoiceHtml, DEFAULT_PHARMACY_SETTINGS } from '@/lib/pharmacyInvoicePrint';
 
@@ -68,6 +69,17 @@ export default function Pharmacy() {
 
   const [editingBillInner, setEditingBillInner] = useState<any | null>(null);
   const [isEditBillOpen, setIsEditBillOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   const handleSaveEditBillInner = async () => {
     if (!editingBillInner) return;
@@ -228,19 +240,26 @@ export default function Pharmacy() {
     }
   };
 
-  const handleDeleteItem = async (id: string) => {
+  const handleDeleteItem = (id: string) => {
     const item = inventory.find(i => i.id === id);
     if (item && !canUserModifyRecord(item, currentUser)) {
       toast.error("Access Denied: This inventory item was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    const success = await supabaseService.deletePharmacyItem(id);
-    if (success) {
-      setInventory(inventory.filter(item => item.id !== id));
-      toast.success('Item removed from inventory');
-    } else {
-      toast.error('Failed to delete item');
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Remove Inventory Item",
+      description: `Are you sure you want to delete ${item?.name || 'this item'} from pharmacy inventory? This action cannot be undone.`,
+      onConfirm: async () => {
+        const success = await supabaseService.deletePharmacyItem(id);
+        if (success) {
+          setInventory(inventory.filter(item => item.id !== id));
+          toast.success('Item removed from inventory');
+        } else {
+          toast.error('Failed to delete item');
+        }
+      }
+    });
   };
 
   const printPharmacyInvoice = (bill: any) => {
@@ -1342,16 +1361,20 @@ export default function Pharmacy() {
               <div className="flex justify-end gap-2 pt-4">
                 <Button 
                   variant="outline" 
-                  onClick={async () => {
-                    const confirmReset = window.confirm("Are you sure you want to reset to default Medicare Wholesale Pharmacy settings?");
-                    if (confirmReset) {
-                      setPharmacySettings(DEFAULT_PHARMACY_SETTINGS);
-                      storage.set('hms_pharmacy_settings', DEFAULT_PHARMACY_SETTINGS);
-                      if (supabaseService.updatePharmacySettings) {
-                        await supabaseService.updatePharmacySettings(DEFAULT_PHARMACY_SETTINGS);
+                  onClick={() => {
+                    setDeleteConfirm({
+                      isOpen: true,
+                      title: "Reset Pharmacy Settings",
+                      description: "Are you sure you want to reset to default Medicare Wholesale Pharmacy settings? This will overwrite your current settings.",
+                      onConfirm: async () => {
+                        setPharmacySettings(DEFAULT_PHARMACY_SETTINGS);
+                        storage.set('hms_pharmacy_settings', DEFAULT_PHARMACY_SETTINGS);
+                        if (supabaseService.updatePharmacySettings) {
+                          await supabaseService.updatePharmacySettings(DEFAULT_PHARMACY_SETTINGS);
+                        }
+                        toast.success('Reset to defaults successfully');
                       }
-                      toast.success('Reset to defaults successfully');
-                    }
+                    });
                   }}
                 >
                   Reset Defaults
@@ -1442,6 +1465,13 @@ export default function Pharmacy() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

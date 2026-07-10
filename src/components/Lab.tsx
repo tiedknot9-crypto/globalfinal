@@ -47,6 +47,7 @@ import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { canUserModifyRecord } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 import { 
   Dialog, 
   DialogContent, 
@@ -325,6 +326,17 @@ export default function Lab() {
   const [testOrders, setTestOrders] = useState<any[]>([]);
   const [bills, setBills] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [appointments, setAppointments] = useState<any[]>([]);
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [newBooking, setNewBooking] = useState({
@@ -683,7 +695,7 @@ export default function Lab() {
     setBillingPkgSelectValue("");
   };
 
-  const handleDeleteBill = async (id: string) => {
+  const handleDeleteBill = (id: string) => {
     if (isDeleteForbidden) {
       toast.error('Deletion of lab bills is restricted for Front Office, Doctor, and Accountant roles.');
       return;
@@ -694,13 +706,20 @@ export default function Lab() {
       toast.error("Access Denied: This lab bill was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    const success = await supabaseService.deleteInvoice(id);
-    if (success) {
-      setBills(bills.filter(b => b.id !== id));
-      toast.success('Lab bill removed');
-    } else {
-      toast.error('Failed to remove bill');
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Lab Bill",
+      description: `Are you sure you want to permanently delete lab bill #${id.slice(0, 8)}? This action cannot be undone.`,
+      onConfirm: async () => {
+        const success = await supabaseService.deleteInvoice(id);
+        if (success) {
+          setBills(bills.filter(b => b.id !== id));
+          toast.success('Lab bill removed');
+        } else {
+          toast.error('Failed to remove bill');
+        }
+      }
+    });
   };
 
   const getResultStatus = (value: string, range: string) => {
@@ -2936,6 +2955,13 @@ export default function Lab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

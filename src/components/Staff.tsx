@@ -43,6 +43,7 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { ConfirmDialog } from './ConfirmDialog';
 import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
@@ -58,6 +59,17 @@ export default function Staff() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<any>(null);
   const [newStaff, setNewStaff] = useState({ name: '', role: 'doctor', department: '', email: '', phone: '', specialty: '', consultationFee: '' });
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   const isDoctorOrSurgeon = (role: string) => {
     const r = (role || '').toUpperCase();
@@ -147,7 +159,7 @@ export default function Staff() {
     }
   };
 
-  const handleDeleteStaff = async (id: string) => {
+  const handleDeleteStaff = (id: string) => {
     const roleUpper = (currentUser?.role || '').toUpperCase();
     if (roleUpper === 'RECEPTIONIST' || roleUpper === 'RECEPTION' || roleUpper === 'FRONT_DESK' || roleUpper === 'DOCTOR' || roleUpper === 'SURGEON' || roleUpper === 'ACCOUNTANT' || roleUpper === 'ACCOUNTS') {
       toast.error('Deletion of staff members is restricted for Front Office, Doctor, and Accountant roles.');
@@ -158,15 +170,20 @@ export default function Staff() {
       toast.error("Access Denied: This staff profile was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    if (confirm('Are you sure you want to remove this staff member?')) {
-      const result = await supabaseService.deleteStaff(id);
-      if (result) {
-        toast.success('Staff member removed');
-        fetchData();
-      } else {
-        toast.error('Failed to remove staff member');
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Remove Staff Member",
+      description: `Are you sure you want to remove staff member "${member?.name || 'this member'}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        const result = await supabaseService.deleteStaff(id);
+        if (result) {
+          toast.success('Staff member removed');
+          fetchData();
+        } else {
+          toast.error('Failed to remove staff member');
+        }
       }
-    }
+    });
   };
 
   const handleExportStaff = () => {
@@ -550,6 +567,13 @@ export default function Staff() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

@@ -50,6 +50,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { canUserEditRecord } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState<any[]>([]);
@@ -65,6 +66,17 @@ export default function Expenses() {
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<any | null>(null);
   const [isEditExpenseOpen, setIsEditExpenseOpen] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [period, setPeriod] = useState<string>('all');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
 
@@ -170,7 +182,7 @@ export default function Expenses() {
     }
   };
 
-  const handleDeleteExpense = async (id: string) => {
+  const handleDeleteExpense = (id: string) => {
     const roleUpper = (currentUser?.role || '').toUpperCase();
     if (roleUpper === 'RECEPTIONIST' || roleUpper === 'RECEPTION' || roleUpper === 'FRONT_DESK' || roleUpper === 'DOCTOR' || roleUpper === 'SURGEON' || roleUpper === 'ACCOUNTANT' || roleUpper === 'ACCOUNTS') {
       toast.error('Deletion of expense records is restricted for Front Office, Doctor, and Accountant roles.');
@@ -182,14 +194,21 @@ export default function Expenses() {
       return;
     }
 
-    const success = await supabaseService.deleteExpense(id);
-    if (success) {
-      toast.success('Expense record removed');
-      fetchExpenses();
-      window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'expenses', action: 'delete' } }));
-    } else {
-      toast.error('Failed to remove expense record');
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Expense",
+      description: `Are you sure you want to permanently delete this expense of ₹${expenseToDelete?.amount || 0} for ${expenseToDelete?.description || 'this category'}? This action cannot be undone.`,
+      onConfirm: async () => {
+        const success = await supabaseService.deleteExpense(id);
+        if (success) {
+          toast.success('Expense record removed');
+          fetchExpenses();
+          window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { table: 'expenses', action: 'delete' } }));
+        } else {
+          toast.error('Failed to remove expense record');
+        }
+      }
+    });
   };
 
   const handleExportExpenses = () => {
@@ -649,6 +668,13 @@ export default function Expenses() {
           </div>
         </CardContent>
       </Card>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

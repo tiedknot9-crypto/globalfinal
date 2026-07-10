@@ -88,6 +88,37 @@ const getLocalDateStrFromVal = (val: any): string => {
   return `${year}-${month}-${day}`;
 };
 
+function parseTimeToMinutes(timeStr: string | null | undefined): number {
+  if (!timeStr) return 0;
+  const cleanStr = timeStr.trim().toUpperCase();
+  
+  // Try 12-hour AM/PM first: e.g. "10:30 AM" or "2:30 PM" or "12:15 AM"
+  const ampmMatch = cleanStr.match(/^(\d+):(\d+)\s*(AM|PM)?/);
+  if (ampmMatch) {
+    let hours = parseInt(ampmMatch[1], 10);
+    const minutes = parseInt(ampmMatch[2], 10);
+    const ampm = ampmMatch[3];
+    if (ampm) {
+      if (ampm === 'PM' && hours < 12) {
+        hours += 12;
+      } else if (ampm === 'AM' && hours === 12) {
+        hours = 0;
+      }
+    }
+    return hours * 60 + minutes;
+  }
+  
+  // Try just "HH:MM" 24-hour format
+  const hmMatch = cleanStr.match(/^(\d+):(\d+)/);
+  if (hmMatch) {
+    const hours = parseInt(hmMatch[1], 10);
+    const minutes = parseInt(hmMatch[2], 10);
+    return hours * 60 + minutes;
+  }
+  
+  return 0;
+}
+
 export default function Dashboard() {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewData, setPreviewData] = useState<{url: string, name: string} | null>(null);
@@ -105,30 +136,43 @@ export default function Dashboard() {
   const currentUser = storage.get(STORAGE_KEYS.SESSION_USER, null);
   
   const displayAppointments = useMemo(() => {
-    if (!currentUser) return appointments;
-    const userRole = (currentUser.role || '').toUpperCase();
-    if (userRole === 'DOCTOR' || userRole === 'SURGEON') {
-      const currentDocId = String(currentUser.id).toLowerCase();
-      const currentDocName = String(currentUser.name || '').toLowerCase();
-      
-      return appointments.filter((apt: any) => {
-        const isMe = 
-          (apt.doctor_id && String(apt.doctor_id).toLowerCase() === currentDocId) ||
-          (apt.doctorId && String(apt.doctorId).toLowerCase() === currentDocId) ||
-          (apt.doctor && String(apt.doctor).toLowerCase() === currentDocName) ||
-          (apt.doctorName && String(apt.doctorName).toLowerCase() === currentDocName);
-          
-        const pId = apt.patient_id || apt.patientId;
-        const patient = patients.find((p: any) => p.id === pId);
-        const isPatientAssigned = patient && (
-          (patient.attending_doctor_id && String(patient.attending_doctor_id).toLowerCase() === currentDocId) ||
-          (patient.attendingDoctorId && String(patient.attendingDoctorId).toLowerCase() === currentDocId)
-        );
+    let filteredList = appointments;
+    if (currentUser) {
+      const userRole = (currentUser.role || '').toUpperCase();
+      if (userRole === 'DOCTOR' || userRole === 'SURGEON') {
+        const currentDocId = String(currentUser.id).toLowerCase();
+        const currentDocName = String(currentUser.name || '').toLowerCase();
         
-        return isMe || isPatientAssigned;
-      });
+        filteredList = appointments.filter((apt: any) => {
+          const isMe = 
+            (apt.doctor_id && String(apt.doctor_id).toLowerCase() === currentDocId) ||
+            (apt.doctorId && String(apt.doctorId).toLowerCase() === currentDocId) ||
+            (apt.doctor && String(apt.doctor).toLowerCase() === currentDocName) ||
+            (apt.doctorName && String(apt.doctorName).toLowerCase() === currentDocName);
+            
+          const pId = apt.patient_id || apt.patientId;
+          const patient = patients.find((p: any) => p.id === pId);
+          const isPatientAssigned = patient && (
+            (patient.attending_doctor_id && String(patient.attending_doctor_id).toLowerCase() === currentDocId) ||
+            (patient.attendingDoctorId && String(patient.attendingDoctorId).toLowerCase() === currentDocId)
+          );
+          
+          return isMe || isPatientAssigned;
+        });
+      }
     }
-    return appointments;
+    
+    // Sort so latest date is at the top, and inside each date sort by time
+    return [...filteredList].sort((a, b) => {
+      const dateA = a.appointment_date || a.date || '';
+      const dateB = b.appointment_date || b.date || '';
+      if (dateA !== dateB) {
+        return dateB.localeCompare(dateA);
+      }
+      const timeA = parseTimeToMinutes(a.appointment_time || a.time);
+      const timeB = parseTimeToMinutes(b.appointment_time || b.time);
+      return timeA - timeB;
+    });
   }, [appointments, currentUser, patients]);
   const showFinancials = !currentUser || canUserViewFinancials(currentUser.role);
 

@@ -75,6 +75,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { ConfirmDialog } from './ConfirmDialog';
 
 export default function Billing() {
   const navigate = useNavigate();
@@ -84,6 +85,17 @@ export default function Billing() {
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
   const [templateImage, setTemplateImage] = useState<string | null>(() => storage.get(STORAGE_KEYS.TEMPLATE_IMAGE, null));
   const [hospitalInfo, setHospitalInfo] = useState(() => storage.get(STORAGE_KEYS.HOSPITAL_INFO, {
     name: 'Global Multispeciality Hospital',
@@ -1233,6 +1245,30 @@ export default function Billing() {
     } else {
       toast.error('Failed to cancel invoice');
     }
+  };
+
+  const triggerDeleteBillOrExpense = (bill: any) => {
+    const isExpense = !!bill.isExpense;
+    setDeleteConfirm({
+      isOpen: true,
+      title: isExpense ? "Delete Expense" : "Cancel Invoice",
+      description: isExpense 
+        ? `Are you sure you want to permanently delete this expense of ₹${bill.payable_amount || bill.payableAmount || bill.total_amount || bill.totalAmount || bill.amount || 0}?` 
+        : `Are you sure you want to cancel Invoice #${bill.id}? This action cannot be undone.`,
+      onConfirm: async () => {
+        if (isExpense) {
+          const ok = await supabaseService.deleteExpense(bill.id);
+          if (ok) {
+            toast.success("Expense record removed");
+            fetchData();
+          } else {
+            toast.error("Failed to remove expense record");
+          }
+        } else {
+          await handleDeleteBill(bill.id);
+        }
+      }
+    });
   };
 
   const handleExportBilling = () => {
@@ -3392,19 +3428,7 @@ export default function Billing() {
                                     <Edit className="w-4 h-4" />
                                   </Button>
                                   {!(roleUpper === 'RECEPTIONIST' || roleUpper === 'RECEPTION' || roleUpper === 'FRONT_DESK' || roleUpper === 'DOCTOR' || roleUpper === 'SURGEON' || roleUpper === 'ACCOUNTANT' || roleUpper === 'ACCOUNTS') && (
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={async () => {
-                                      if (bill.isExpense) {
-                                        const ok = await supabaseService.deleteExpense(bill.id);
-                                        if (ok) {
-                                          toast.success("Expense record removed");
-                                          fetchData();
-                                        } else {
-                                          toast.error("Failed to remove expense record");
-                                        }
-                                      } else {
-                                        handleDeleteBill(bill.id);
-                                      }
-                                    }}>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => triggerDeleteBillOrExpense(bill)}>
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
                                   )}
@@ -3852,6 +3876,13 @@ export default function Billing() {
           <OPD />
         </div>
       )}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

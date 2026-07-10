@@ -42,6 +42,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { ConfirmDialog } from './ConfirmDialog';
 import { MOCK_USERS, MOCK_PATIENTS, MOCK_BED_RATES, MOCK_OT_RATES, MOCK_LAB_TESTS, MOCK_MATERIAL_RATES } from '@/mockData';
 import { storage, STORAGE_KEYS } from '@/lib/storage';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
@@ -238,6 +239,17 @@ export default function Settings({ currentUser, onUserUpdate, onHospitalUpdate }
   // Supabase SQL Editor State
   const [sqlTab, setSqlTab] = useState<'all' | 'tax_slabs' | 'billing' | 'pharmacy'>('all');
   const [copiedSql, setCopiedSql] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   // Tax Slab Settings
   const [taxSlabs, setTaxSlabs] = useState<any[]>(() => 
@@ -553,123 +565,126 @@ export default function Settings({ currentUser, onUserUpdate, onHospitalUpdate }
     }, 1500);
   };
 
-  const handlePurgeDemoData = async () => {
-    if (!window.confirm("Are you sure you want to delete all seeded demo data (including patients Amit Patel, Priya Singh, Rahul Sharma and their related invoices, appointments, and medical entries)? This action is permanent and cannot be undone.")) {
-      return;
-    }
+  const handlePurgeDemoData = () => {
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Purge Demo Data",
+      description: "Are you sure you want to delete all seeded demo data (including patients Amit Patel, Priya Singh, Rahul Sharma and their related invoices, appointments, and medical entries)? This action is permanent and cannot be undone.",
+      onConfirm: async () => {
+        setIsPurging(true);
+        try {
+          // 1. Identify target patients in local storage first
+          const patients = storage.get(STORAGE_KEYS.PATIENTS, []);
+          const demoPatients = patients.filter((p: any) => {
+            const name = (p.name || '').toLowerCase();
+            return name.includes('amit patel') || name.includes('priya singh') || name.includes('rahul sharma') || name.includes('sameer khan');
+          });
+          const demoIds = demoPatients.map((p: any) => p.id);
 
-    setIsPurging(true);
-    try {
-      // 1. Identify target patients in local storage first
-      const patients = storage.get(STORAGE_KEYS.PATIENTS, []);
-      const demoPatients = patients.filter((p: any) => {
-        const name = (p.name || '').toLowerCase();
-        return name.includes('amit patel') || name.includes('priya singh') || name.includes('rahul sharma') || name.includes('sameer khan');
-      });
-      const demoIds = demoPatients.map((p: any) => p.id);
+          // 2. Filter local storage records
+          const cleanLocalData = (key: string, idField: string = 'patientId') => {
+            const list = storage.get(key, []);
+            if (!Array.isArray(list)) return;
+            const filtered = list.filter((item: any) => {
+              if (!item) return false;
+              const itemId = item[idField] || item.patient_id || item.patientId || '';
+              if (demoIds.includes(itemId)) return false;
+              const pName = (item.patient_name || item.patientName || item.name || '').toLowerCase();
+              if (pName.includes('amit patel') || pName.includes('priya singh') || pName.includes('rahul sharma') || pName.includes('sameer khan')) return false;
+              return true;
+            });
+            storage.set(key, filtered);
+          };
 
-      // 2. Filter local storage records
-      const cleanLocalData = (key: string, idField: string = 'patientId') => {
-        const list = storage.get(key, []);
-        if (!Array.isArray(list)) return;
-        const filtered = list.filter((item: any) => {
-          if (!item) return false;
-          const itemId = item[idField] || item.patient_id || item.patientId || '';
-          if (demoIds.includes(itemId)) return false;
-          const pName = (item.patient_name || item.patientName || item.name || '').toLowerCase();
-          if (pName.includes('amit patel') || pName.includes('priya singh') || pName.includes('rahul sharma') || pName.includes('sameer khan')) return false;
-          return true;
-        });
-        storage.set(key, filtered);
-      };
+          // Clean local keys
+          cleanLocalData(STORAGE_KEYS.PATIENTS, 'id');
+          cleanLocalData(STORAGE_KEYS.APPOINTMENTS, 'patientId');
+          cleanLocalData(STORAGE_KEYS.BILLING, 'patientId');
+          cleanLocalData(STORAGE_KEYS.PHARMACY_BILLS, 'patientId');
+          cleanLocalData(STORAGE_KEYS.PRESCRIPTIONS, 'patientId');
+          cleanLocalData(STORAGE_KEYS.PATIENT_VITALS, 'patientId');
+          cleanLocalData(STORAGE_KEYS.LAB_TEST_ORDERS, 'patient_id');
 
-      // Clean local keys
-      cleanLocalData(STORAGE_KEYS.PATIENTS, 'id');
-      cleanLocalData(STORAGE_KEYS.APPOINTMENTS, 'patientId');
-      cleanLocalData(STORAGE_KEYS.BILLING, 'patientId');
-      cleanLocalData(STORAGE_KEYS.PHARMACY_BILLS, 'patientId');
-      cleanLocalData(STORAGE_KEYS.PRESCRIPTIONS, 'patientId');
-      cleanLocalData(STORAGE_KEYS.PATIENT_VITALS, 'patientId');
-      cleanLocalData(STORAGE_KEYS.LAB_TEST_ORDERS, 'patient_id');
+          // Also clean 'hms_admissions'
+          cleanLocalData('hms_admissions', 'patientId');
 
-      // Also clean 'hms_admissions'
-      cleanLocalData('hms_admissions', 'patientId');
+          // 3. Clean live Supabase DB if connected
+          if (isSupabaseConfigured) {
+            toast.info("Connecting to Supabase to purge cloud records...", { duration: 2000 });
+            
+            // Fetch matching cloud patients
+            const { data: dbPatients, error: fetchErr } = await supabase
+              .from('patients')
+              .select('id, name')
+              .or('name.ilike.%Amit Patel%,name.ilike.%Priya Singh%,name.ilike.%Rahul Sharma%');
 
-      // 3. Clean live Supabase DB if connected
-      if (isSupabaseConfigured) {
-        toast.info("Connecting to Supabase to purge cloud records...", { duration: 2000 });
-        
-        // Fetch matching cloud patients
-        const { data: dbPatients, error: fetchErr } = await supabase
-          .from('patients')
-          .select('id, name')
-          .or('name.ilike.%Amit Patel%,name.ilike.%Priya Singh%,name.ilike.%Rahul Sharma%');
+            if (fetchErr) {
+              console.warn("Could not query patients on Supabase:", fetchErr.message);
+            } else if (dbPatients && dbPatients.length > 0) {
+              const cloudIds = dbPatients.map(p => p.id);
+              console.log("Found cloud patient IDs to purge:", cloudIds);
 
-        if (fetchErr) {
-          console.warn("Could not query patients on Supabase:", fetchErr.message);
-        } else if (dbPatients && dbPatients.length > 0) {
-          const cloudIds = dbPatients.map(p => p.id);
-          console.log("Found cloud patient IDs to purge:", cloudIds);
+              const dependentTables = [
+                'appointments',
+                'quick_registrations',
+                'live_queue',
+                'admissions',
+                'patient_vitals',
+                'clinical_notes',
+                'prescriptions',
+                'test_requests',
+                'insurance_claims',
+                'discharge_summaries',
+                'ot_schedules',
+                'nursing_notes'
+              ];
 
-          const dependentTables = [
-            'appointments',
-            'quick_registrations',
-            'live_queue',
-            'admissions',
-            'patient_vitals',
-            'clinical_notes',
-            'prescriptions',
-            'test_requests',
-            'insurance_claims',
-            'discharge_summaries',
-            'ot_schedules',
-            'nursing_notes'
-          ];
+              for (const table of dependentTables) {
+                await supabase.from(table).delete().in('patient_id', cloudIds);
+              }
 
-          for (const table of dependentTables) {
-            await supabase.from(table).delete().in('patient_id', cloudIds);
+              // Fetch invoices for items cleanup
+              const { data: dbInvoices } = await supabase
+                .from('invoices')
+                .select('id')
+                .in('patient_id', cloudIds);
+
+              if (dbInvoices && dbInvoices.length > 0) {
+                const invoiceIds = dbInvoices.map(i => i.id);
+                await supabase.from('invoice_items').delete().in('invoice_id', invoiceIds);
+                await supabase.from('invoices').delete().in('id', invoiceIds);
+              }
+
+              // Finally, delete the patients
+              const { error: patDelErr } = await supabase.from('patients').delete().in('id', cloudIds);
+              if (patDelErr) {
+                console.error("Error deleting patients from Supabase:", patDelErr);
+              }
+            }
           }
 
-          // Fetch invoices for items cleanup
-          const { data: dbInvoices } = await supabase
-            .from('invoices')
-            .select('id')
-            .in('patient_id', cloudIds);
+          toast.success("Successfully purged seeded dummy data!", {
+            description: "Seeded patients, billing records, and appointments have been cleared from system registers.",
+            duration: 4000
+          });
 
-          if (dbInvoices && dbInvoices.length > 0) {
-            const invoiceIds = dbInvoices.map(i => i.id);
-            await supabase.from('invoice_items').delete().in('invoice_id', invoiceIds);
-            await supabase.from('invoices').delete().in('id', invoiceIds);
-          }
+          // Dispatch event to force other active panels to refresh
+          window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { action: 'sync' } }));
+          
+          // Delay to refresh view state
+          setTimeout(() => {
+            window.location.reload();
+          }, 1500);
 
-          // Finally, delete the patients
-          const { error: patDelErr } = await supabase.from('patients').delete().in('id', cloudIds);
-          if (patDelErr) {
-            console.error("Error deleting patients from Supabase:", patDelErr);
-          }
+        } catch (err: any) {
+          toast.error("An error occurred while purging dummy data", {
+            description: err.message || "Failed to complete purge process."
+          });
+        } finally {
+          setIsPurging(false);
         }
       }
-
-      toast.success("Successfully purged seeded dummy data!", {
-        description: "Seeded patients, billing records, and appointments have been cleared from system registers.",
-        duration: 4000
-      });
-
-      // Dispatch event to force other active panels to refresh
-      window.dispatchEvent(new CustomEvent('supabase-data-sync', { detail: { action: 'sync' } }));
-      
-      // Delay to refresh view state
-      setTimeout(() => {
-        window.location.reload();
-      }, 1500);
-
-    } catch (err: any) {
-      toast.error("An error occurred while purging dummy data", {
-        description: err.message || "Failed to complete purge process."
-      });
-    } finally {
-      setIsPurging(false);
-    }
+    });
   };
 
   // Profile State
@@ -2180,20 +2195,25 @@ export default function Settings({ currentUser, onUserUpdate, onHospitalUpdate }
                         }}>
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={async () => {
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500" onClick={() => {
                           if (user.id === currentUser?.id) {
                             toast.error('Cannot delete yourself!');
                             return;
                           }
-                          if (confirm('Are you sure you want to delete this user?')) {
-                            const success = await supabaseService.deleteStaff(user.id);
-                            if (success) {
-                              setUsers(users.filter((u: any) => u.id !== user.id));
-                              toast.success('User account removed');
-                            } else {
-                              toast.error('Failed to remove user account');
+                          setDeleteConfirm({
+                            isOpen: true,
+                            title: "Delete User",
+                            description: `Are you sure you want to permanently delete the user "${user.name}"? This action cannot be undone.`,
+                            onConfirm: async () => {
+                              const success = await supabaseService.deleteStaff(user.id);
+                              if (success) {
+                                setUsers(users.filter((u: any) => u.id !== user.id));
+                                toast.success('User account removed');
+                              } else {
+                                toast.error('Failed to remove user account');
+                              }
                             }
-                          }
+                          });
                         }}>
                           <Trash2 className="w-4 h-4" />
                         </Button>
@@ -3137,6 +3157,13 @@ export default function Settings({ currentUser, onUserUpdate, onHospitalUpdate }
           </TabsContent>
         )}
       </Tabs>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }

@@ -70,6 +70,7 @@ import { toast } from 'sonner';
 import { supabaseService } from '@/services/supabaseService';
 import { useDataSync } from '@/hooks/useDataSync';
 import { canUserModifyRecord, normalizeRole } from '@/utils/rbac';
+import { ConfirmDialog } from './ConfirmDialog';
 
 interface AdmissionFormDataPayload {
   patient_id: string;
@@ -519,6 +520,18 @@ export default function IPD() {
     duplicatePatient: any;
   } | null>(null);
   const isQuickRegisteringRef = useRef(false);
+
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   const confirmIPDMergeAndContinue = async () => {
     if (!mergePatientData) return;
@@ -1436,7 +1449,7 @@ export default function IPD() {
     }
   };
 
-  const handleDeleteNote = async (id: string) => {
+  const handleDeleteNote = (id: string) => {
     if (isDeleteForbidden) {
       toast.error('Deletion of clinical notes is restricted for Front Office, Doctor, and Accountant roles.');
       return;
@@ -1446,23 +1459,30 @@ export default function IPD() {
       toast.error("Access Denied: This clinical note was added by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    try {
-      const res = await supabaseService.deleteClinicalNote(id);
-      if (res) {
-        toast.success("Clinical note removed successfully from history");
-        if (selectedPatient?.id) {
-          const notes = await supabaseService.getClinicalNotes(selectedPatient.id);
-          if (notes) setClinicalNotes(notes);
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Clinical Note",
+      description: "Are you sure you want to delete this clinical note? This action cannot be undone.",
+      onConfirm: async () => {
+        try {
+          const res = await supabaseService.deleteClinicalNote(id);
+          if (res) {
+            toast.success("Clinical note removed successfully from history");
+            if (selectedPatient?.id) {
+              const notes = await supabaseService.getClinicalNotes(selectedPatient.id);
+              if (notes) setClinicalNotes(notes);
+            }
+          } else {
+            toast.error("Failed to delete clinical note");
+          }
+        } catch (err: any) {
+          toast.error("Error deleting note: " + err.message);
         }
-      } else {
-        toast.error("Failed to delete clinical note");
       }
-    } catch (err: any) {
-      toast.error("Error deleting note: " + err.message);
-    }
+    });
   };
 
-  const handleDeleteBed = async (id: string) => {
+  const handleDeleteBed = (id: string) => {
     if (isDeleteForbidden) {
       toast.error('Deletion of bed configurations is restricted for Front Office, Doctor, and Accountant roles.');
       return;
@@ -1472,13 +1492,20 @@ export default function IPD() {
       toast.error("Access Denied: This bed config was created by an Admin and cannot be deleted by non-admin users.");
       return;
     }
-    const success = await supabaseService.deleteBed(id);
-    if (success) {
-      setBeds(beds.filter(b => b.id !== id));
-      toast.success('Bed removed');
-    } else {
-      toast.error('Failed to remove bed');
-    }
+    setDeleteConfirm({
+      isOpen: true,
+      title: "Delete Bed Configuration",
+      description: `Are you sure you want to delete Bed ${bed?.bed_number || ''}? This action cannot be undone.`,
+      onConfirm: async () => {
+        const success = await supabaseService.deleteBed(id);
+        if (success) {
+          setBeds(beds.filter(b => b.id !== id));
+          toast.success('Bed removed');
+        } else {
+          toast.error('Failed to remove bed');
+        }
+      }
+    });
   };
 
   const handleExportIPD = () => {
@@ -4661,6 +4688,13 @@ export default function IPD() {
           })()}
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={deleteConfirm.onConfirm}
+        title={deleteConfirm.title}
+        description={deleteConfirm.description}
+      />
     </div>
   );
 }
