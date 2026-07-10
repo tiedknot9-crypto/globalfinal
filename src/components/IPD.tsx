@@ -615,9 +615,8 @@ export default function IPD() {
         const nameMatches = pName === trimmedNewName;
         const phoneMatches = trimmedNewPhone && pPhone && (trimmedNewPhone === pPhone);
 
-        if (nameMatches && phoneMatches) return true;
-        if (trimmedNewPhone && trimmedNewPhone.length >= 10 && pPhone === trimmedNewPhone) return true;
-        if (nameMatches && !trimmedNewPhone && !pPhone) return true;
+        if (nameMatches) return true;
+        if (trimmedNewPhone && pPhone && trimmedNewPhone === pPhone) return true;
         return false;
       });
 

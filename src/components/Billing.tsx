@@ -83,6 +83,7 @@ export default function Billing() {
   const [users, setUsers] = useState<any[]>(() => storage.get(STORAGE_KEYS.USERS, MOCK_USERS));
   const [expenses, setExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [templateImage, setTemplateImage] = useState<string | null>(() => storage.get(STORAGE_KEYS.TEMPLATE_IMAGE, null));
   const [hospitalInfo, setHospitalInfo] = useState(() => storage.get(STORAGE_KEYS.HOSPITAL_INFO, {
     name: 'Global Multispeciality Hospital',
@@ -1035,60 +1036,70 @@ export default function Billing() {
       return;
     }
 
-    const disc = Number(newInvoice.discount) || 0;
-    const finalAmountVal = Math.max(0, totalInvoiceAmount - disc);
-    
-    let paidAmt = 0;
-    let statusText = 'Unpaid';
-    
-    if (paymentStatus === 'Paid') {
-      paidAmt = finalAmountVal;
-      statusText = 'Paid';
-    } else if (paymentStatus === 'Partial') {
-      const entered = parseFloat(initialPaidAmount) || 0;
-      paidAmt = Math.min(finalAmountVal, Math.max(0, entered));
-      statusText = paidAmt >= finalAmountVal ? 'Paid' : (paidAmt > 0 ? 'Partial' : 'Unpaid');
-    } else {
-      paidAmt = 0;
-      statusText = 'Unpaid';
-    }
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    const billToAdd = {
-      patient_id: newInvoice.patientId,
-      total_amount: totalInvoiceAmount,
-      discount_amount: disc,
-      payable_amount: finalAmountVal,
-      paid_amount: paidAmt,
-      payment_status: statusText,
-      payment_method: paymentStatus === 'Unpaid' ? 'N/A' : newInvoice.paymentMode,
-      payment_reference: invoicePaymentRef || '',
-      status: statusText,
-      type: 'Independent',
-      created_by: currentUser?.id || 'u-accounts',
-      issued_by: currentUser?.id || 'u-accounts',
-      created_at: invoiceDateTime ? new Date(invoiceDateTime).toISOString() : new Date().toISOString()
-    };
-    
-    const itemsToInsert = invoiceItems.map(item => ({
-      item_name: item.description,
-      quantity: 1,
-      unit_price: item.amount,
-      total_price: item.amount,
-      category: item.category
-    }));
+    try {
+      const disc = Number(newInvoice.discount) || 0;
+      const finalAmountVal = Math.max(0, totalInvoiceAmount - disc);
+      
+      let paidAmt = 0;
+      let statusText = 'Unpaid';
+      
+      if (paymentStatus === 'Paid') {
+        paidAmt = finalAmountVal;
+        statusText = 'Paid';
+      } else if (paymentStatus === 'Partial') {
+        const entered = parseFloat(initialPaidAmount) || 0;
+        paidAmt = Math.min(finalAmountVal, Math.max(0, entered));
+        statusText = paidAmt >= finalAmountVal ? 'Paid' : (paidAmt > 0 ? 'Partial' : 'Unpaid');
+      } else {
+        paidAmt = 0;
+        statusText = 'Unpaid';
+      }
 
-    const result = await supabaseService.createInvoice(billToAdd, itemsToInsert);
-    if (result) {
-      fetchData();
-      setInvoiceItems([]);
-      setNewInvoice({ patientId: '', paymentMode: 'Cash', discount: 0 });
-      setPatientSearchTerm('');
-      setShowPatientResults(false);
-      setIsInvoiceOpen(false);
-      toast.success('Independent invoice generated');
-      logAudit('CREATE_INVOICE', result.id, { bill: result });
-    } else {
-      toast.error('Failed to create invoice');
+      const billToAdd = {
+        patient_id: newInvoice.patientId,
+        total_amount: totalInvoiceAmount,
+        discount_amount: disc,
+        payable_amount: finalAmountVal,
+        paid_amount: paidAmt,
+        payment_status: statusText,
+        payment_method: paymentStatus === 'Unpaid' ? 'N/A' : newInvoice.paymentMode,
+        payment_reference: invoicePaymentRef || '',
+        status: statusText,
+        type: 'Independent',
+        created_by: currentUser?.id || 'u-accounts',
+        issued_by: currentUser?.id || 'u-accounts',
+        created_at: invoiceDateTime ? new Date(invoiceDateTime).toISOString() : new Date().toISOString()
+      };
+      
+      const itemsToInsert = invoiceItems.map(item => ({
+        item_name: item.description,
+        quantity: 1,
+        unit_price: item.amount,
+        total_price: item.amount,
+        category: item.category
+      }));
+
+      const result = await supabaseService.createInvoice(billToAdd, itemsToInsert);
+      if (result) {
+        fetchData();
+        setInvoiceItems([]);
+        setNewInvoice({ patientId: '', paymentMode: 'Cash', discount: 0 });
+        setPatientSearchTerm('');
+        setShowPatientResults(false);
+        setIsInvoiceOpen(false);
+        toast.success('Independent invoice generated');
+        logAudit('CREATE_INVOICE', result.id, { bill: result });
+      } else {
+        toast.error('Failed to create invoice');
+      }
+    } catch (err: any) {
+      console.error('Error generating invoice:', err);
+      toast.error('Error: ' + (err.message || err));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -2263,7 +2274,14 @@ export default function Billing() {
                     setIsInvoiceOpen(false);
                   }}>Discard</Button>
                 </DialogTrigger>
-                <Button className="bg-medical-blue" onClick={handleCreateInvoice} disabled={invoiceItems.length === 0}>Generate Bill</Button>
+                <Button className="bg-medical-blue font-bold px-5" onClick={handleCreateInvoice} disabled={isSubmitting || invoiceItems.length === 0}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                      Generating...
+                    </>
+                  ) : "Generate Bill"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

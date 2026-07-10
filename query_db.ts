@@ -8,20 +8,16 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_q0e5J5
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function run() {
-  console.log('Querying profiles matching c8236da6-a7a7-4bd3-b895-8485efc2df10...');
+  console.log('Querying beds in the database...');
   const { data, error } = await supabase
-    .from('profiles')
+    .from('beds')
     .select('*');
   
   if (error) {
-    console.error('Error fetching profiles:', error);
+    console.error('Error fetching beds:', error);
   } else {
-    console.log('Total profiles:', data?.length);
-    const specific = data?.find((p: any) => p.id === 'c8236da6-a7a7-4bd3-b895-8485efc2df10');
-    console.log('Specific profile:', JSON.stringify(specific, null, 2));
-    console.log('Roles list in profiles:');
-    const roles = Array.from(new Set(data?.map((p: any) => p.role)));
-    console.log(roles);
+    console.log('Total beds:', data?.length);
+    console.log('Sample bed:', JSON.stringify(data?.[0], null, 2));
   }
 }
 

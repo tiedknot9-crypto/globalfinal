@@ -972,15 +972,12 @@ export default function OPD() {
       const duplicatePatient = patients.find((p: any) => {
         const pName = (p.name || '').trim().toLowerCase();
         const pPhone = (p.phone || p.mobile || '').trim().replace(/\D/g, '');
-        const pEmail = (p.email || '').trim().toLowerCase();
 
         const nameMatches = pName === trimmedNewName;
         const phoneMatches = trimmedNewPhone && pPhone && (trimmedNewPhone === pPhone);
-        const emailMatches = trimmedNewEmail && pEmail && (trimmedNewEmail === pEmail);
 
-        if (nameMatches && phoneMatches) return true;
-        if (trimmedNewPhone && trimmedNewPhone.length >= 10 && pPhone === trimmedNewPhone) return true;
-        if (nameMatches && !trimmedNewPhone && !pPhone) return true;
+        if (nameMatches) return true;
+        if (trimmedNewPhone && pPhone && trimmedNewPhone === pPhone) return true;
         return false;
       });
 
